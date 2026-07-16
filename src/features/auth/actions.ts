@@ -86,16 +86,44 @@ export async function registerWithInvite(input: unknown): Promise<ActionResult> 
       });
       if (claimed.count === 0) throw new InviteUnavailableError();
 
-      const user = await tx.user.create({
-        data: {
-          name,
-          username,
-          email: invite.email.toLowerCase(),
-          hashedPassword,
-          globalRole: invite.intendedGlobalRole,
-          status: "ACTIVE",
-        },
-      });
+      const email = invite.email.toLowerCase();
+
+      // Admin-created accounts (see admin `createUser`) pre-create an INVITED
+      // user with this email and no password; the set-password link they receive
+      // is an ordinary invite. Complete THAT existing row rather than inserting a
+      // duplicate (which would hit the unique-email constraint). A pure invite —
+      // no pre-created user — still falls through to the create branch below.
+      const existing = await tx.user.findUnique({ where: { email } });
+
+      let user;
+      if (existing) {
+        // Only an as-yet-unregistered (INVITED) account may be completed this
+        // way. An ACTIVE/SUSPENDED account already owns this email, so the invite
+        // cannot be used to take it over.
+        if (existing.status !== "INVITED") throw new InviteUnavailableError();
+
+        user = await tx.user.update({
+          where: { id: existing.id },
+          data: {
+            name,
+            username,
+            hashedPassword,
+            globalRole: invite.intendedGlobalRole,
+            status: "ACTIVE",
+          },
+        });
+      } else {
+        user = await tx.user.create({
+          data: {
+            name,
+            username,
+            email,
+            hashedPassword,
+            globalRole: invite.intendedGlobalRole,
+            status: "ACTIVE",
+          },
+        });
+      }
 
       await tx.auditLog.create({
         data: {
