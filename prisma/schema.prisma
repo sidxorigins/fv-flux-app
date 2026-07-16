@@ -1,0 +1,254 @@
+// Flux — Prisma schema
+// Data model per CLAUDE.md "Data Model (starting point)".
+// Prisma 7: new `prisma-client` generator (TS client emitted to a custom output dir).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  // Prisma 7: connection URLs live in prisma.config.ts (datasource.url), not here.
+  // The runtime PrismaClient connects via a driver adapter (see src/lib/db.ts).
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum GlobalRole {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+enum ProjectRole {
+  MANAGER
+  MEMBER
+  VIEWER
+}
+
+enum TaskType {
+  TASK
+  BUG
+  STORY
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Core entities
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id             String     @id @default(cuid())
+  name           String
+  // Stored lowercase-normalised; format validation happens in Zod at the boundary.
+  username       String     @unique
+  email          String     @unique
+  hashedPassword String?
+  globalRole     GlobalRole @default(USER)
+  status         UserStatus @default(ACTIVE)
+  bio            String?
+  avatarKey      String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  // Relations
+  projectsLed    Project[]           @relation("ProjectLead")
+  memberships    ProjectMembership[]
+  invitesSent    Invite[]            @relation("InviteInvitedBy")
+  assignedTasks  Task[]              @relation("TaskAssignee")
+  reportedTasks  Task[]              @relation("TaskReporter")
+  comments       Comment[]
+  attachments    Attachment[]
+  auditLogs      AuditLog[]
+  activityLogs   ActivityLog[]
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  description String?
+  leadId      String
+  // Per-project incrementing counter for task keys (<KEY>-<n>); bumped atomically in a tx.
+  taskCounter Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Never hard-delete a user who leads a project.
+  lead        User                @relation("ProjectLead", fields: [leadId], references: [id], onDelete: Restrict)
+  memberships ProjectMembership[]
+  tasks       Task[]
+  labels      Label[]
+
+  @@index([leadId])
+}
+
+model ProjectMembership {
+  id          String      @id @default(cuid())
+  projectId   String
+  userId      String
+  projectRole ProjectRole
+  createdAt   DateTime    @default(now())
+
+  // Deleting a project cascades its memberships; users are never hard-deleted.
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model Invite {
+  id                 String     @id @default(cuid())
+  email              String
+  intendedGlobalRole GlobalRole @default(USER)
+  tokenHash          String     @unique
+  invitedById        String
+  expiresAt          DateTime
+  acceptedAt         DateTime?
+  revokedAt          DateTime?
+  createdAt          DateTime   @default(now())
+
+  invitedBy          User       @relation("InviteInvitedBy", fields: [invitedById], references: [id], onDelete: Restrict)
+
+  @@index([email])
+  @@index([invitedById])
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  projectId   String
+  key         String       @unique
+  title       String
+  // Sanitised HTML (project's chosen rich-text persistence format).
+  description String?
+  type        TaskType     @default(TASK)
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  assigneeId  String?
+  reporterId  String
+  parentId    String?
+  // Fractional-index / midpoint ordering value for the board.
+  position    Float
+  dueDate     DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Deleting a project cascades its tasks.
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // Users are never hard-deleted, so assignee/reporter are Restrict.
+  assignee    User?         @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
+  reporter    User          @relation("TaskReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  // Self-relation for subtasks: deleting a parent sets its children's parentId to null.
+  parent      Task?         @relation("Subtasks", fields: [parentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  subtasks    Task[]        @relation("Subtasks")
+  labels      Label[]
+  comments    Comment[]
+  attachments Attachment[]
+  activityLogs ActivityLog[]
+
+  @@index([projectId, status, position])
+  @@index([assigneeId])
+  @@index([dueDate])
+  @@index([parentId])
+}
+
+model Label {
+  id        String  @id @default(cuid())
+  projectId String
+  name      String
+  color     String
+
+  // Deleting a project cascades its labels.
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+
+  @@unique([projectId, name])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String
+  // Sanitised HTML.
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([taskId])
+  @@index([authorId])
+}
+
+model Attachment {
+  id          String   @id @default(cuid())
+  taskId      String
+  uploaderId  String
+  // R2 object key — never exposed directly; served via presigned URLs.
+  key         String
+  filename    String
+  contentType String
+  size        Int
+  createdAt   DateTime @default(now())
+
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader    User     @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+
+  @@index([taskId])
+  @@index([uploaderId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
+  targetType String
+  targetId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor      User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@index([actorId])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  taskId    String
+  actorId   String
+  action    String
+  field     String?
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime @default(now())
+
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor     User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([taskId, createdAt])
+  @@index([actorId])
+}
