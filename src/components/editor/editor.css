@@ -1,0 +1,169 @@
+/**
+ * Shared Tiptap prose styling for both the editable RichTextEditor and the
+ * read-only RichTextContent renderer. Token-based only — never hardcode hex
+ * values here (see CLAUDE.md "Look & Feel"). Kept compact: this renders task
+ * descriptions and comments inside app panels, not long-form blog content.
+ */
+
+.flux-prose {
+  color: var(--foreground);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  word-wrap: break-word;
+}
+
+.flux-prose > * + * {
+  margin-top: 0.65em;
+}
+
+.flux-prose p {
+  margin: 0;
+}
+
+.flux-prose h1,
+.flux-prose h2,
+.flux-prose h3 {
+  font-family: var(--font-heading);
+  color: var(--foreground);
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.flux-prose h1 {
+  margin-top: 1.1em;
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+.flux-prose h2 {
+  margin-top: 1em;
+  font-size: 1.1875rem;
+  font-weight: 700;
+}
+
+.flux-prose h3 {
+  margin-top: 0.9em;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.flux-prose > h1:first-child,
+.flux-prose > h2:first-child,
+.flux-prose > h3:first-child {
+  margin-top: 0;
+}
+
+.flux-prose strong {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.flux-prose em {
+  font-style: italic;
+}
+
+.flux-prose s {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+.flux-prose ul,
+.flux-prose ol {
+  margin: 0;
+  padding-left: 1.375em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+}
+
+.flux-prose ul {
+  list-style: disc;
+}
+
+.flux-prose ol {
+  list-style: decimal;
+}
+
+.flux-prose li p {
+  margin: 0;
+}
+
+.flux-prose li::marker {
+  color: var(--muted-foreground);
+}
+
+.flux-prose blockquote {
+  margin: 0;
+  padding: 0.15em 0 0.15em 0.9em;
+  border-left: 3px solid var(--primary);
+  color: var(--muted-foreground);
+}
+
+.flux-prose blockquote > * + * {
+  margin-top: 0.5em;
+}
+
+.flux-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.8125em;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+.flux-prose pre {
+  margin: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75em 0.9em;
+  overflow-x: auto;
+}
+
+.flux-prose pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--foreground);
+}
+
+.flux-prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.5em 0;
+}
+
+.flux-prose a {
+  color: var(--primary);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+.flux-prose a:hover {
+  text-decoration: underline;
+}
+
+/* Placeholder — Tiptap's Placeholder extension marks the empty editor root
+   (and empty nodes) with these classes; style via the ::before pattern so
+   the placeholder never becomes real, persisted content. */
+.flux-prose.is-editor-empty:first-child::before,
+.flux-prose p.is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--muted-foreground);
+}
+
+/* Editable-only affordances */
+.flux-prose[contenteditable="true"] {
+  outline: none;
+  min-height: var(--flux-editor-min-height, 120px);
+}
+
+.flux-prose[contenteditable="true"] :first-child {
+  margin-top: 0;
+}
