@@ -1,30 +1,208 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import Link from "next/link";
+import {
+  ArrowRight,
+  CalendarClock,
+  CheckCircle2,
+  Eye,
+  ListTodo,
+} from "lucide-react";
 
-// TODO: real dashboard (KPIs from grouped DB queries, my work, activity,
-// charts) lands in a later phase — these shells prove the glass system.
-const KPI_PLACEHOLDERS = [
-  "My open tasks",
-  "Due soon",
-  "In review",
-  "Completed this week",
-] as const;
+import { getMyTasks } from "@/features/tasks/queries";
+import {
+  getDashboardScope,
+  getKpis,
+  getProjectTiles,
+  getRecentActivity,
+  getStatusDistribution,
+  getThroughput,
+  getWorkload,
+} from "@/features/dashboard/queries";
+import { KpiCard } from "@/features/dashboard/components/KpiCard";
+import {
+  StatusDonut,
+  ThroughputArea,
+  WorkloadBar,
+} from "@/features/dashboard/components/Charts";
+import { MyWorkList } from "@/features/dashboard/components/MyWorkList";
+import { ActivityFeed } from "@/features/dashboard/components/ActivityFeed";
+import { ProjectTiles } from "@/features/dashboard/components/ProjectTiles";
+import { DashboardEntrance } from "@/features/dashboard/components/DashboardEntrance";
+import { cn } from "@/lib/utils";
 
-export default function DashboardPage() {
+/** Small-caps muted section heading — the one heading style across the grid. */
+function SectionHeading({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-        Dashboard
-      </h1>
+    <h2
+      className={cn(
+        "text-muted-foreground text-xs font-medium tracking-wider uppercase",
+        className,
+      )}
+    >
+      {children}
+    </h2>
+  );
+}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {KPI_PLACEHOLDERS.map((label) => (
-          <div key={label} className="glass flex flex-col gap-3 p-5">
-            <span className="text-sm text-muted-foreground">{label}</span>
-            <Skeleton className="h-8 w-16" />
-            <Skeleton className="h-3 w-24" />
-          </div>
-        ))}
+/** Glass panel — the dashboard-card chrome (charts, lists). */
+function Panel({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="glass flex flex-col gap-3 p-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <SectionHeading>{title}</SectionHeading>
+        {action}
       </div>
-    </div>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * The flagship screen. Everything is fetched server-side in one Promise.all —
+ * the scope (session user + member-project ids) resolves once and is shared by
+ * every aggregate query. The only client JS on the page: the two chart panels,
+ * the inline status dropdowns, and the one entrance wrapper.
+ */
+export default async function DashboardPage() {
+  const scope = await getDashboardScope();
+
+  // No memberships → the CLAUDE.md onboarding empty state, no dead widgets.
+  if (scope.projectIds.length === 0) {
+    return (
+      <div className="flex flex-col gap-6">
+        <h1 className="text-foreground text-2xl font-semibold tracking-tight">
+          Dashboard
+        </h1>
+        <div className="glass mx-auto mt-16 flex w-full max-w-md flex-col items-center gap-2 px-8 py-12 text-center">
+          <p className="text-foreground text-base font-medium">
+            You don&apos;t have access to any projects yet
+          </p>
+          <p className="text-muted-foreground text-sm">
+            An admin will add you. Once you&apos;re in a project, your work,
+            activity and charts appear here.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const [kpis, statusDist, throughput, workload, activity, tiles, myTasks] =
+    await Promise.all([
+      getKpis(scope),
+      getStatusDistribution(scope),
+      getThroughput(scope),
+      getWorkload(scope),
+      getRecentActivity(12, scope),
+      getProjectTiles(scope),
+      getMyTasks(8),
+    ]);
+
+  const completedDelta = kpis.completedThisWeek - kpis.completedLastWeek;
+
+  return (
+    <DashboardEntrance>
+      <div className="flex flex-col gap-6">
+        <h1 className="text-foreground text-2xl font-semibold tracking-tight">
+          Dashboard
+        </h1>
+
+        {/* KPI row — glass stat cards, real numbers from first paint */}
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            label="My open tasks"
+            value={kpis.openAssigned}
+            icon={ListTodo}
+            iconClass="text-info"
+            caption="assigned to you"
+          />
+          <KpiCard
+            label="Due soon"
+            value={kpis.dueSoon}
+            icon={CalendarClock}
+            iconClass={kpis.overdue > 0 ? "text-danger" : "text-warning"}
+            caption={
+              kpis.overdue > 0 ? (
+                <span className="text-danger font-medium">
+                  {kpis.overdue} overdue
+                </span>
+              ) : (
+                "next 7 days"
+              )
+            }
+          />
+          <KpiCard
+            label="In review"
+            value={kpis.inReview}
+            icon={Eye}
+            iconClass="text-warning"
+            caption="awaiting review"
+          />
+          <KpiCard
+            label="Completed this week"
+            value={kpis.completedThisWeek}
+            icon={CheckCircle2}
+            iconClass="text-success"
+            delta={{ value: completedDelta, meaning: "up-good" }}
+          />
+        </div>
+
+        {/* Main bento: 2/3 work + trends, 1/3 distribution + activity */}
+        <div className="grid items-start gap-4 lg:grid-cols-3">
+          <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
+            <Panel
+              title="My work"
+              action={
+                <Link
+                  href="/tasks"
+                  className="text-primary hover:text-primary-hover focus-visible:ring-ring/50 flex items-center gap-1 rounded text-xs font-medium outline-none focus-visible:ring-2"
+                >
+                  View all
+                  <ArrowRight aria-hidden className="size-3" />
+                </Link>
+              }
+            >
+              <MyWorkList tasks={myTasks} />
+            </Panel>
+
+            <Panel title="Throughput — completed per week">
+              <ThroughputArea data={throughput} />
+            </Panel>
+
+            <Panel title="Workload — open tasks by assignee">
+              <WorkloadBar data={workload} />
+            </Panel>
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-4">
+            <Panel title="Status distribution">
+              <StatusDonut data={statusDist} />
+            </Panel>
+
+            <Panel title="Recent activity">
+              <ActivityFeed items={activity} />
+            </Panel>
+          </div>
+        </div>
+
+        {/* Project shortcuts */}
+        <section className="flex flex-col gap-3">
+          <SectionHeading>Projects</SectionHeading>
+          <ProjectTiles tiles={tiles} />
+        </section>
+      </div>
+    </DashboardEntrance>
   );
 }
