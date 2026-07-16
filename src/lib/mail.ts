@@ -1,0 +1,149 @@
+// Transactional email via SMTP (nodemailer). v1 sends exactly one message type:
+// the invite email. Sending NEVER throws — callers always get a structured result
+// so they can fall back to surfacing a copyable invite link when SMTP is down or
+// unconfigured (common in local dev).
+
+import nodemailer, { type Transporter } from "nodemailer";
+
+let cachedTransport: Transporter | null = null;
+
+function getTransport(): Transporter | null {
+  const host = process.env.SMTP_HOST;
+  if (!host) return null; // SMTP not configured — caller shows the link instead.
+  if (cachedTransport) return cachedTransport;
+
+  const port = Number(process.env.SMTP_PORT ?? 587);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  cachedTransport = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465, // implicit TLS on 465; STARTTLS on 587/25
+    auth: user ? { user, pass } : undefined,
+  });
+  return cachedTransport;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export interface SendInviteEmailParams {
+  to: string;
+  inviteUrl: string;
+  invitedByName: string;
+}
+
+export interface SendResult {
+  sent: boolean;
+  /** Present when not sent because SMTP is unconfigured. */
+  reason?: string;
+  /** Present when a send was attempted but failed. */
+  error?: string;
+}
+
+// Email context is standalone HTML with no access to the app's CSS tokens, so the
+// Flux brand orange (#FF6B35) is inlined here by design — this is the one place a
+// raw hex is acceptable.
+function buildInviteHtml({ inviteUrl, invitedByName }: SendInviteEmailParams): string {
+  const who = escapeHtml(invitedByName);
+  const url = escapeHtml(inviteUrl);
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#0a0a0a;font-family:'Outfit',Arial,Helvetica,sans-serif;color:#f5f5f7;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0a;padding:32px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background:#141414;border:1px solid #2a2a2a;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="padding:32px 32px 8px 32px;">
+                <div style="font-size:22px;font-weight:700;color:#ff6b35;">Flux</div>
+                <h1 style="font-size:20px;font-weight:600;margin:20px 0 8px 0;color:#f5f5f7;">You've been invited</h1>
+                <p style="font-size:15px;line-height:1.6;color:#9a9a9a;margin:0 0 24px 0;">
+                  ${who} has invited you to join Flux, the Foodverse task &amp; project workspace.
+                  Set up your account to get started.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 8px 32px;">
+                <a href="${url}" style="display:inline-block;background:#ff6b35;color:#0a0a0a;font-weight:600;font-size:15px;text-decoration:none;padding:12px 24px;border-radius:10px;">
+                  Accept invite
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px 32px 32px;">
+                <p style="font-size:12px;line-height:1.6;color:#9a9a9a;margin:0;">
+                  Or paste this link into your browser:<br />
+                  <span style="color:#5b8def;word-break:break-all;">${url}</span>
+                </p>
+                <p style="font-size:12px;color:#6a6a6a;margin:16px 0 0 0;">
+                  If you weren't expecting this invite, you can safely ignore this email.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function buildInviteText({ inviteUrl, invitedByName }: SendInviteEmailParams): string {
+  return [
+    `${invitedByName} has invited you to join Flux, the Foodverse task & project workspace.`,
+    "",
+    "Accept your invite:",
+    inviteUrl,
+    "",
+    "If you weren't expecting this invite, you can safely ignore this email.",
+  ].join("\n");
+}
+
+/**
+ * Send an invite email. Returns:
+ *   { sent: true }                                    — delivered to SMTP
+ *   { sent: false, reason: "smtp-unconfigured" }      — no SMTP_HOST; link logged
+ *   { sent: false, error }                            — attempted, transport failed
+ * Never throws.
+ */
+export async function sendInviteEmail(
+  params: SendInviteEmailParams,
+): Promise<SendResult> {
+  const transport = getTransport();
+
+  if (!transport) {
+    // Dev / unconfigured: surface the link so onboarding still works.
+    console.info(
+      `[mail] SMTP not configured — invite link for ${params.to}: ${params.inviteUrl}`,
+    );
+    return { sent: false, reason: "smtp-unconfigured" };
+  }
+
+  const from = process.env.SMTP_FROM ?? "Flux <no-reply@foodverse.io>";
+
+  try {
+    await transport.sendMail({
+      from,
+      to: params.to,
+      subject: "You've been invited to Flux",
+      text: buildInviteText(params),
+      html: buildInviteHtml(params),
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error("[mail] invite send failed", err);
+    return {
+      sent: false,
+      error: err instanceof Error ? err.message : "unknown-error",
+    };
+  }
+}
