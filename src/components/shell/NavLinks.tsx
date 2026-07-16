@@ -1,0 +1,62 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  FolderKanban,
+  LayoutDashboard,
+  ListTodo,
+  Shield,
+  type LucideIcon,
+} from "lucide-react";
+
+import { cn } from "@/lib/utils";
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/tasks", label: "My Tasks", icon: ListTodo },
+  // TODO: render only for globalRole === "ADMIN" once auth/permissions land.
+  { href: "/admin", label: "Admin", icon: Shield },
+];
+
+/**
+ * Primary navigation — the only client piece of the sidebar (active state
+ * needs the pathname). Micro-interactions are CSS transitions only.
+ */
+export function NavLinks() {
+  const pathname = usePathname();
+
+  return (
+    <nav aria-label="Primary" className="flex flex-col gap-1">
+      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        const active = pathname === href || pathname.startsWith(`${href}/`);
+
+        return (
+          <Link
+            key={href}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium",
+              "transition-colors duration-150 motion-reduce:transition-none",
+              "outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              active
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-surface-raised/70 hover:text-foreground"
+            )}
+          >
+            <Icon aria-hidden className="size-4 shrink-0" />
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
