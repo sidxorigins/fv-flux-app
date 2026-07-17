@@ -15,7 +15,7 @@ test.describe("authentication", () => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: /Flux/ })).toBeVisible();
-    await expect(page.getByText(/Work in motion/)).toBeVisible();
+    await expect(page.getByText(/Work in motion/).first()).toBeVisible();
     await expect(page.getByRole("img", { name: /Foodverse/ })).toBeVisible();
 
     // Sign in CTA leads to the login form (Base UI renders the link with

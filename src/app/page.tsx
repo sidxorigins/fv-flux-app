@@ -5,96 +5,25 @@ import { ArrowRight, FileText, ScrollText, UsersRound } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { VanishingText } from "@/components/landing/VanishingText";
+import { LetterRain, ScrambledTitle } from "@/components/ui/raining-letters";
 
 /**
  * Public landing page — the only unauthenticated page besides the auth flows.
- * Signed-in users skip straight to their dashboard. Server-rendered, zero
- * client JS: the one entrance fade is CSS-only and respects reduced motion.
+ * Signed-in users skip straight to their dashboard.
+ *
+ * Hero is the 21st.dev "raining letters" treatment re-themed to the Flux
+ * tokens: falling glyphs with the occasional orange flicker behind a
+ * scramble-decoding headline. Everything animated is client-side garnish;
+ * the copy, CTAs, features and footer are server-rendered.
  */
 
-/** A card on the miniature board. Decorative — real keys from the seed data. */
-interface MiniCard {
-  taskKey: string;
-  title: string;
-  dot: string;
-  dragging?: boolean;
-}
-
-interface MiniColumn {
-  label: string;
-  dot: string;
-  cards: MiniCard[];
-}
-
-const MINI_BOARD: MiniColumn[] = [
-  {
-    label: "To Do",
-    dot: "bg-muted-foreground",
-    cards: [
-      { taskKey: "FLUX-2", title: "Design the board layout", dot: "bg-info" },
-      { taskKey: "FLUX-7", title: "Rich-text comments", dot: "bg-muted-foreground" },
-    ],
-  },
-  {
-    label: "In Progress",
-    dot: "bg-info",
-    cards: [
-      { taskKey: "FLUX-1", title: "Auth with invite flow", dot: "bg-warning" },
-      {
-        taskKey: "FLUX-3",
-        title: "Fix drag flicker on Safari",
-        dot: "bg-danger",
-        dragging: true,
-      },
-    ],
-  },
-  {
-    label: "Done",
-    dot: "bg-success",
-    cards: [{ taskKey: "FLUX-6", title: "Dashboard KPI cards", dot: "bg-success" }],
-  },
+const HERO_PHRASES = [
+  "Work in motion.",
+  "Plan the sprint.",
+  "Move the board.",
+  "Ship the work.",
+  "Flux.",
 ];
-
-function MiniBoard() {
-  return (
-    <div
-      aria-hidden
-      className="glass w-full max-w-md p-4 [transform:perspective(1200px)_rotateY(-6deg)_rotateX(2deg)]"
-    >
-      <div className="grid grid-cols-3 gap-3">
-        {MINI_BOARD.map((column) => (
-          <div key={column.label} className="flex flex-col gap-2">
-            <div className="flex items-center gap-1.5 px-0.5">
-              <span className={`size-1.5 rounded-full ${column.dot}`} />
-              <span className="truncate text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
-                {column.label}
-              </span>
-            </div>
-            {column.cards.map((card) => (
-              <div
-                key={card.taskKey}
-                className={`flex flex-col gap-1.5 rounded-lg border border-white/10 bg-surface-raised p-2.5 ${
-                  card.dragging
-                    ? "rotate-3 shadow-xl shadow-black/50 ring-2 ring-primary/60"
-                    : ""
-                }`}
-              >
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  {card.taskKey}
-                </span>
-                <span className="text-xs leading-snug text-foreground">
-                  {card.title}
-                </span>
-                <span className={`size-1.5 rounded-full ${card.dot}`} />
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 const FEATURES = [
   {
@@ -120,68 +49,69 @@ export default async function Home() {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      {/* Nav */}
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
-        <span className="text-xl font-bold tracking-tight text-foreground">
-          Flux
-          <span aria-hidden className="text-primary">
-            .
+      {/* Hero — full viewport, raining glyphs behind the decoding headline */}
+      <section className="relative flex h-svh min-h-[36rem] flex-col overflow-hidden">
+        <LetterRain />
+
+        {/* Nav overlays the rain */}
+        <header className="relative z-20 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
+          <span className="text-xl font-bold tracking-tight text-foreground">
+            Flux
+            <span aria-hidden className="text-primary">
+              .
+            </span>
           </span>
-        </span>
-        <Button size="sm" nativeButton={false} render={<Link href="/login" />}>
-          Sign in
-        </Button>
-      </header>
+          <Button
+            size="sm"
+            nativeButton={false}
+            render={<Link href="/login" />}
+          >
+            Sign in
+          </Button>
+        </header>
 
-      {/* Hero */}
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center px-6">
-        <div className="grid items-center gap-12 py-16 lg:grid-cols-[1.1fr_1fr] lg:py-24">
-          <div className="flex max-w-xl flex-col gap-6 motion-safe:animate-[landing-rise_300ms_ease-out]">
-            <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
-              Internal · Invite-only
-            </p>
-            <h1 className="text-8xl leading-none font-bold tracking-tight text-foreground sm:text-9xl">
-              <VanishingText text="Flux" />
-              <span aria-hidden className="text-primary">
-                .
-              </span>
-            </h1>
-            <p className="text-2xl tracking-tight text-foreground sm:text-3xl">
-              <span className="font-extralight">Work in</span>{" "}
-              <span className="font-semibold">
-                motion
-                <span aria-hidden className="text-primary">
-                  .
-                </span>
-              </span>
-            </p>
-            <p className="text-base leading-relaxed text-muted-foreground sm:text-lg">
-              Flux is where Foodverse teams plan projects, move tasks across the
-              board and keep every change on the record — one shared view of
-              work as it happens.
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                size="lg"
-                nativeButton={false}
-                render={<Link href="/login" />}
-              >
-                Sign in
-                <ArrowRight aria-hidden />
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                No account? Access is by admin invite.
-              </span>
-            </div>
-          </div>
+        <div className="relative z-20 mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center gap-6 px-6 pb-20 text-center">
+          <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
+            Internal · Invite-only
+          </p>
 
-          <div className="hidden justify-center motion-safe:animate-[landing-rise_300ms_ease-out] sm:flex lg:justify-end">
-            <MiniBoard />
+          <ScrambledTitle
+            phrases={HERO_PHRASES}
+            label="Flux — work in motion"
+            className="min-h-[2.4em] text-5xl leading-tight font-bold tracking-tight text-foreground sm:min-h-[1.2em] sm:text-7xl"
+          />
+
+          <p className="max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+            Flux is where Foodverse teams plan projects, move tasks across the
+            board and keep every change on the record — one shared view of work
+            as it happens.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Button
+              size="lg"
+              nativeButton={false}
+              render={<Link href="/login" />}
+            >
+              Sign in
+              <ArrowRight aria-hidden />
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              No account? Access is by admin invite.
+            </span>
           </div>
         </div>
 
-        {/* Features — quiet, solid surface (no glass-on-glass) */}
-        <div className="grid gap-4 pb-20 sm:grid-cols-3">
+        {/* Fade the rain out into the content below */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-b from-transparent to-background"
+        />
+      </section>
+
+      {/* Features — quiet, solid surface */}
+      <main className="mx-auto w-full max-w-6xl px-6">
+        <div className="grid gap-4 py-16 sm:grid-cols-3">
           {FEATURES.map(({ icon: Icon, title, body }) => (
             <div
               key={title}
@@ -197,7 +127,7 @@ export default async function Home() {
         </div>
       </main>
 
-      {/* Footer — part of the Foodverse ecosystem */}
+      {/* Footer — powered by Foodverse */}
       <footer className="border-t border-border">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-6 px-6 py-8 sm:flex-row">
           <div className="flex items-center gap-3">

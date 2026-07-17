@@ -203,6 +203,13 @@
   }
 }
 
+/* Scramble placeholder glyphs inside the landing hero's decoding headline
+   (see components/ui/raining-letters.tsx — TextScramble emits .dud spans). */
+.scramble-target .dud {
+  color: var(--primary);
+  opacity: 0.7;
+}
+
 /* Landing hero entrance — the one permitted first-load animation (see
    CLAUDE.md Motion rules). Used via motion-safe: so reduced-motion users
    get the content instantly with no movement. */
