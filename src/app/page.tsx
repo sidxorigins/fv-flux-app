@@ -139,7 +139,13 @@ export default async function Home() {
             <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
               Internal · Invite-only
             </p>
-            <h1 className="text-5xl leading-[1.05] tracking-tight text-foreground sm:text-6xl">
+            <h1 className="text-8xl leading-none font-bold tracking-tight text-foreground sm:text-9xl">
+              Flux
+              <span aria-hidden className="text-primary">
+                .
+              </span>
+            </h1>
+            <p className="text-2xl tracking-tight text-foreground sm:text-3xl">
               <span className="font-extralight">Work in</span>{" "}
               <span className="font-semibold">
                 motion
@@ -147,7 +153,7 @@ export default async function Home() {
                   .
                 </span>
               </span>
-            </h1>
+            </p>
             <p className="text-base leading-relaxed text-muted-foreground sm:text-lg">
               Flux is where Foodverse teams plan projects, move tasks across the
               board and keep every change on the record — one shared view of
