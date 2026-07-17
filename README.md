@@ -76,6 +76,15 @@ npx prisma studio      # inspect the DB
 npm run db:seed        # re-run the idempotent seed
 ```
 
+## Deploying
+
+Two production deployments, both backed by the same Prisma Postgres database:
+
+- **EC2 / flux.foodverse.io** — `./deploy.sh` (rsync → build on server → pm2 restart; needs the SSH key, override path with `FLUX_DEPLOY_PEM`). The box is shared with other foodverse.io sites — the script only touches `/var/www/flux` and the `flux` pm2 app.
+- **Prisma Compute** — `bunx @prisma/cli@latest app deploy --prod --yes` (project `flux`, ap-southeast-1).
+
+Server env lives in `/var/www/flux/.env` on the box (EC2) and `prisma-cli project env` (Compute) — neither is synced from this repo.
+
 ## Project layout
 
 ```
