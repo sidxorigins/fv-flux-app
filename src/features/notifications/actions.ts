@@ -10,6 +10,10 @@ import {
   requireProjectRole,
   requireUser,
 } from "@/lib/permissions";
+import {
+  getNotificationsPage,
+  type NotificationsPage,
+} from "./queries";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -60,6 +64,23 @@ export async function markAllNotificationsRead(): Promise<ActionResult> {
     });
     revalidatePath("/", "layout");
     return { ok: true };
+  } catch (err) {
+    return mapAuthError(err) ?? fail("Something went wrong.");
+  }
+}
+
+/**
+ * Client-callable wrapper over `getNotificationsPage` so the /inbox list can
+ * "Load more" / switch the unread filter without a full navigation. Read-only;
+ * still scoped to the signed-in user inside the query.
+ */
+export async function fetchNotificationsPage(params: {
+  cursor?: string;
+  unreadOnly?: boolean;
+}): Promise<ActionResult<NotificationsPage>> {
+  try {
+    const page = await getNotificationsPage(params);
+    return { ok: true, data: page };
   } catch (err) {
     return mapAuthError(err) ?? fail("Something went wrong.");
   }

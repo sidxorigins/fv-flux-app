@@ -7,26 +7,30 @@ import {
   ListTodo,
 } from "lucide-react";
 
-import { getMyTasks } from "@/features/tasks/queries";
+import { getCreatableProjects } from "@/features/projects/queries";
 import {
   getDashboardScope,
   getKpis,
+  getMyWorkGrouped,
   getProjectTiles,
   getRecentActivity,
   getStatusDistribution,
   getThroughput,
   getWorkload,
 } from "@/features/dashboard/queries";
+import { getNotificationsPage } from "@/features/notifications/queries";
 import { KpiCard } from "@/features/dashboard/components/KpiCard";
 import {
   StatusDonut,
   ThroughputArea,
   WorkloadBar,
 } from "@/features/dashboard/components/Charts";
-import { MyWorkList } from "@/features/dashboard/components/MyWorkList";
+import { GroupedWorkList } from "@/features/dashboard/components/GroupedWorkList";
+import { InboxPanel } from "@/features/dashboard/components/InboxPanel";
 import { ActivityFeed } from "@/features/dashboard/components/ActivityFeed";
 import { ProjectTiles } from "@/features/dashboard/components/ProjectTiles";
 import { DashboardEntrance } from "@/features/dashboard/components/DashboardEntrance";
+import { CreateTaskDialog } from "@/features/tasks/components";
 import { cn } from "@/lib/utils";
 
 /** Small-caps muted section heading — the one heading style across the grid. */
@@ -49,20 +53,41 @@ function SectionHeading({
   );
 }
 
+/** "You" (personal) vs "Team" (project-wide) chip — clarifies each widget's scope. */
+function ScopeChip({ scope }: { scope: "you" | "team" }) {
+  return (
+    <span
+      className={cn(
+        "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+        scope === "you"
+          ? "bg-primary/12 text-primary"
+          : "bg-surface-raised text-muted-foreground",
+      )}
+    >
+      {scope === "you" ? "You" : "Team"}
+    </span>
+  );
+}
+
 /** Glass panel — the dashboard-card chrome (charts, lists). */
 function Panel({
   title,
+  scope,
   action,
   children,
 }: {
   title: string;
+  scope?: "you" | "team";
   action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section className="glass flex flex-col gap-3 p-5">
       <div className="flex items-baseline justify-between gap-3">
-        <SectionHeading>{title}</SectionHeading>
+        <div className="flex items-center gap-2">
+          <SectionHeading>{title}</SectionHeading>
+          {scope ? <ScopeChip scope={scope} /> : null}
+        </div>
         {action}
       </div>
       {children}
@@ -99,25 +124,41 @@ export default async function DashboardPage() {
     );
   }
 
-  const [kpis, statusDist, throughput, workload, activity, tiles, myTasks] =
-    await Promise.all([
-      getKpis(scope),
-      getStatusDistribution(scope),
-      getThroughput(scope),
-      getWorkload(scope),
-      getRecentActivity(12, scope),
-      getProjectTiles(scope),
-      getMyTasks(8),
-    ]);
+  const [
+    kpis,
+    statusDist,
+    throughput,
+    workload,
+    activity,
+    tiles,
+    work,
+    inbox,
+    creatable,
+  ] = await Promise.all([
+    getKpis(scope),
+    getStatusDistribution(scope),
+    getThroughput(scope),
+    getWorkload(scope),
+    getRecentActivity(12, scope),
+    getProjectTiles(scope),
+    getMyWorkGrouped(),
+    getNotificationsPage({ unreadOnly: true, limit: 5 }),
+    getCreatableProjects(),
+  ]);
 
   const completedDelta = kpis.completedThisWeek - kpis.completedLastWeek;
 
   return (
     <DashboardEntrance>
       <div className="flex flex-col gap-6">
-        <h1 className="text-foreground text-2xl font-semibold tracking-tight">
-          Dashboard
-        </h1>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-foreground text-2xl font-semibold tracking-tight">
+            Dashboard
+          </h1>
+          {creatable.length > 0 ? (
+            <CreateTaskDialog projects={creatable} />
+          ) : null}
+        </div>
 
         {/* KPI row — glass stat cards, real numbers from first paint */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -159,11 +200,12 @@ export default async function DashboardPage() {
           />
         </div>
 
-        {/* Main bento: 2/3 work + trends, 1/3 distribution + activity */}
+        {/* Main bento: 2/3 work + trends, 1/3 inbox + distribution + activity */}
         <div className="grid items-start gap-4 lg:grid-cols-3">
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
             <Panel
               title="My work"
+              scope="you"
               action={
                 <Link
                   href="/tasks"
@@ -174,24 +216,40 @@ export default async function DashboardPage() {
                 </Link>
               }
             >
-              <MyWorkList tasks={myTasks} />
+              <GroupedWorkList work={work} />
             </Panel>
 
-            <Panel title="Throughput — completed per week">
+            <Panel title="Throughput — completed per week" scope="team">
               <ThroughputArea data={throughput} />
             </Panel>
 
-            <Panel title="Workload — open tasks by assignee">
+            <Panel title="Workload — open tasks by assignee" scope="team">
               <WorkloadBar data={workload} />
             </Panel>
           </div>
 
           <div className="flex min-w-0 flex-col gap-4">
-            <Panel title="Status distribution">
+            <Panel
+              title="Inbox"
+              scope="you"
+              action={
+                <Link
+                  href="/inbox"
+                  className="text-primary hover:text-primary-hover focus-visible:ring-ring/50 flex items-center gap-1 rounded text-xs font-medium outline-none focus-visible:ring-2"
+                >
+                  View all
+                  <ArrowRight aria-hidden className="size-3" />
+                </Link>
+              }
+            >
+              <InboxPanel notifications={inbox.items} />
+            </Panel>
+
+            <Panel title="Status distribution" scope="team">
               <StatusDonut data={statusDist} />
             </Panel>
 
-            <Panel title="Recent activity">
+            <Panel title="Recent activity" scope="team">
               <ActivityFeed items={activity} />
             </Panel>
           </div>

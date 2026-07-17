@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { getUnreadNotificationCount } from "@/features/notifications/queries";
 import { NavLinks } from "./NavLinks";
 
 /**
@@ -10,6 +11,7 @@ import { NavLinks } from "./NavLinks";
 export async function Sidebar() {
   const session = await auth();
   const isAdmin = session?.user?.globalRole === "ADMIN";
+  const unreadCount = await getUnreadNotificationCount();
 
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 p-3 pr-0 lg:block">
@@ -23,7 +25,7 @@ export async function Sidebar() {
             </span>
           </span>
         </div>
-        <NavLinks isAdmin={isAdmin} />
+        <NavLinks isAdmin={isAdmin} unreadCount={unreadCount} />
       </div>
     </aside>
   );

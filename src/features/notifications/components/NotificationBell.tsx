@@ -10,48 +10,12 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { cn } from "@/lib/utils"
 import type { NotificationItem } from "../queries"
 import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "../actions"
-
-const DIVISIONS: { amount: number; unit: Intl.RelativeTimeFormatUnit }[] = [
-  { amount: 60, unit: "second" },
-  { amount: 60, unit: "minute" },
-  { amount: 24, unit: "hour" },
-  { amount: 7, unit: "day" },
-  { amount: 4.34524, unit: "week" },
-  { amount: 12, unit: "month" },
-  { amount: Number.POSITIVE_INFINITY, unit: "year" },
-]
-
-function relativeTime(date: Date): string {
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" })
-  let duration = (date.getTime() - Date.now()) / 1000
-  for (const d of DIVISIONS) {
-    if (Math.abs(duration) < d.amount) return rtf.format(Math.round(duration), d.unit)
-    duration /= d.amount
-  }
-  return date.toLocaleDateString()
-}
-
-function sentence(n: NotificationItem): string {
-  const who = n.actorName ?? "Someone"
-  switch (n.type) {
-    case "TASK_ASSIGNED":
-      return `${who} assigned this task to you`
-    case "TASK_MENTIONED":
-      return `${who} mentioned you in a comment`
-    case "TASK_COMMENTED":
-      return `${who} commented`
-    case "TASK_STATUS_CHANGED":
-      return `${who} changed the status`
-    default:
-      return `${who} updated this task`
-  }
-}
+import { NotificationRow } from "./NotificationRow"
 
 export interface NotificationBellProps {
   notifications: NotificationItem[]
@@ -139,39 +103,20 @@ export function NotificationBell({
           <ul className="max-h-96 overflow-y-auto py-1">
             {notifications.map((n) => (
               <li key={n.id}>
-                <button
-                  type="button"
-                  onClick={() => openNotification(n)}
-                  className={cn(
-                    "flex w-full flex-col gap-0.5 px-3 py-2 text-left transition-colors hover:bg-surface-raised",
-                    !n.readAt && "bg-primary/5",
-                  )}
-                >
-                  <span className="flex items-center gap-2">
-                    {!n.readAt ? (
-                      <span
-                        className="size-1.5 shrink-0 rounded-full bg-primary"
-                        aria-hidden
-                      />
-                    ) : null}
-                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                      {sentence(n)}
-                    </span>
-                  </span>
-                  {n.taskKey ? (
-                    <span className="truncate pl-3.5 text-xs text-muted-foreground">
-                      <span className="font-mono">{n.taskKey}</span>{" "}
-                      {n.taskTitle}
-                    </span>
-                  ) : null}
-                  <span className="pl-3.5 text-[11px] text-muted-foreground">
-                    {relativeTime(new Date(n.createdAt))}
-                  </span>
-                </button>
+                <NotificationRow notification={n} onSelect={openNotification} />
               </li>
             ))}
           </ul>
         )}
+
+        <div className="border-t border-border px-1 py-1">
+          <a
+            href="/inbox"
+            className="block rounded-md px-2 py-1.5 text-center text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground"
+          >
+            View all in Inbox
+          </a>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   )

@@ -17,6 +17,8 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/permissions";
 import { getAvatarUrl } from "@/features/users/avatar";
+import { getMyTasks } from "@/features/tasks/queries";
+import { bucketWorkByDue, type GroupedWork } from "./work-buckets";
 import type { Prisma } from "@/generated/prisma/client";
 import type { ProjectRole, TaskStatus } from "@/generated/prisma/enums";
 
@@ -419,4 +421,18 @@ export async function getProjectTiles(
     role: projectRole,
     openTaskCount: project._count.tasks,
   }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// My work, bucketed by urgency
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The signed-in user's open assigned tasks, bucketed by urgency for the
+ * dashboard "My work" agenda. Reuses getMyTasks (priority/due ordering + the
+ * personal/admin scoping) and buckets in memory.
+ */
+export async function getMyWorkGrouped(): Promise<GroupedWork> {
+  const tasks = await getMyTasks(40);
+  return bucketWorkByDue(tasks);
 }

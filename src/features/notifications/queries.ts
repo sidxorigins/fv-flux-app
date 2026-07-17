@@ -60,6 +60,65 @@ export async function getMyNotifications(limit = 20): Promise<NotificationItem[]
   }));
 }
 
+export interface NotificationsPage {
+  items: NotificationItem[]
+  nextCursor: string | null
+}
+
+const INBOX_PAGE_SIZE = 20
+
+/**
+ * Cursor-paginated notifications for the /inbox page. `unreadOnly` filters to
+ * unread; `cursor` is the last item id of the previous page. Newest first.
+ */
+export async function getNotificationsPage(params?: {
+  cursor?: string
+  unreadOnly?: boolean
+  limit?: number
+}): Promise<NotificationsPage> {
+  const user = await requireUser()
+  const take = Math.min(Math.max(params?.limit ?? INBOX_PAGE_SIZE, 1), 50)
+
+  const rows = await prisma.notification.findMany({
+    where: {
+      userId: user.id,
+      ...(params?.unreadOnly ? { readAt: null } : {}),
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: take + 1,
+    ...(params?.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
+    select: {
+      id: true,
+      type: true,
+      taskId: true,
+      metadata: true,
+      readAt: true,
+      createdAt: true,
+      actor: { select: USER_BASIC },
+      task: { select: { key: true, title: true, projectId: true } },
+    },
+  })
+
+  const hasMore = rows.length > take
+  const page = hasMore ? rows.slice(0, take) : rows
+
+  return {
+    items: page.map((n) => ({
+      id: n.id,
+      type: n.type,
+      taskId: n.taskId,
+      projectId: n.task?.projectId ?? null,
+      taskKey: n.task?.key ?? null,
+      taskTitle: n.task?.title ?? null,
+      actorName: n.actor?.name ?? null,
+      metadata: n.metadata,
+      readAt: n.readAt,
+      createdAt: n.createdAt,
+    })),
+    nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+  }
+}
+
 /** Count of the signed-in user's unread notifications (for the bell badge). */
 export async function getUnreadNotificationCount(): Promise<number> {
   const user = await requireUser();
