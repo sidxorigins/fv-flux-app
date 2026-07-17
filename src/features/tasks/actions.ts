@@ -164,7 +164,9 @@ async function notifyAssignee(params: {
 /**
  * Create a task. In one transaction: validate assignee/parent/labels, atomically bump
  * the project's task counter to mint the `<KEY>-<n>` key, place the card at the bottom
- * of the TODO column, create the task, and write a "created" ActivityLog row.
+ * of the destination status column (TODO unless the caller specifies otherwise — e.g.
+ * the board's per-column quick-add), create the task, and write a "created"
+ * ActivityLog row.
  *
  * v1 rule: a subtask can be one level deep only — the parent must be a top-level task
  * in the same project. Assignee and labels must belong to the same project.
@@ -181,6 +183,7 @@ export async function createTask(
     title,
     description,
     type,
+    status,
     priority,
     assigneeId,
     parentId,
@@ -216,9 +219,9 @@ export async function createTask(
       });
       const key = `${project.key}-${project.taskCounter}`;
 
-      // Place at the bottom of the TODO column.
+      // Place at the bottom of the destination status column.
       const agg = await tx.task.aggregate({
-        where: { projectId, status: "TODO" },
+        where: { projectId, status },
         _max: { position: true },
       });
       const position = computeMidpoint(agg._max.position ?? null, null);
@@ -230,7 +233,7 @@ export async function createTask(
           title,
           description: description ? sanitizeRichText(description) : null,
           type,
-          status: "TODO",
+          status,
           priority,
           assigneeId: assigneeId ?? null,
           reporterId: user.id,

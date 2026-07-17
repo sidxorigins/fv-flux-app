@@ -16,6 +16,10 @@ export const createTaskSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
   description: richText.optional(),
   type: z.enum(TaskType).default("TASK"),
+  // Which column the card is created in (e.g. the board's per-column quick-add).
+  // Defaults to TODO — the "New task" dialog never sends this, so it keeps
+  // today's behaviour.
+  status: z.enum(TaskStatus).default("TODO"),
   priority: z.enum(TaskPriority).default("MEDIUM"),
   assigneeId: id.nullable().optional(),
   // A subtask's parent — validated server-side to be a top-level task in the same

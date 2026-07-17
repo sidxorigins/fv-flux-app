@@ -23,9 +23,12 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import { Loader2, Plus } from "lucide-react"
 
 import type { TaskStatus } from "@/generated/prisma/client"
 
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
 import type { BoardTask, TaskMoveEvent } from "../types"
@@ -52,6 +55,13 @@ export type BoardProps = {
   tasks: BoardTask[]
   onTaskMove: (event: TaskMoveEvent) => void
   onTaskClick: (taskId: string) => void
+  /**
+   * Inline "+ Add a task…" quick-add at the foot of a column. Resolves `true`
+   * on success (the caller clears the input) or `false` on failure (the
+   * caller keeps the title so the user can retry). Omitted/ignored when
+   * `disabled` — VIEWER read-only mode never shows quick-add.
+   */
+  onQuickAdd?: (status: TaskStatus, title: string) => Promise<boolean>
   /** VIEWER read-only mode: dragging is off, cards remain clickable. */
   disabled?: boolean
   /** Optional reference time for overdue highlighting (see TaskCard). */
@@ -69,6 +79,7 @@ export function Board({
   tasks,
   onTaskMove,
   onTaskClick,
+  onQuickAdd,
   disabled = false,
   now,
   className,
@@ -265,6 +276,7 @@ export function Board({
             tasks={columns[status]}
             disabled={disabled}
             onTaskClick={onTaskClick}
+            onQuickAdd={onQuickAdd}
             now={clientNow}
             reducedMotion={reducedMotion}
           />
@@ -285,6 +297,7 @@ function BoardColumn({
   tasks,
   disabled,
   onTaskClick,
+  onQuickAdd,
   now,
   reducedMotion,
 }: {
@@ -292,6 +305,7 @@ function BoardColumn({
   tasks: BoardTask[]
   disabled: boolean
   onTaskClick: (taskId: string) => void
+  onQuickAdd?: (status: TaskStatus, title: string) => Promise<boolean>
   now: Date | null
   reducedMotion: boolean
 }) {
@@ -350,7 +364,65 @@ function BoardColumn({
           )}
         </SortableContext>
       </div>
+      {/* Outside the SortableContext / droppable region on purpose — the
+          quick-add row is never a draggable item and must not interfere with
+          dnd-kit's sensors. Hidden entirely in VIEWER read-only mode. */}
+      {!disabled && onQuickAdd ? (
+        <div className="shrink-0 border-t border-border p-2">
+          <QuickAddTask status={status} onQuickAdd={onQuickAdd} />
+        </div>
+      ) : null}
     </section>
+  )
+}
+
+function QuickAddTask({
+  status,
+  onQuickAdd,
+}: {
+  status: TaskStatus
+  onQuickAdd: (status: TaskStatus, title: string) => Promise<boolean>
+}) {
+  const [title, setTitle] = React.useState("")
+  const [isPending, setIsPending] = React.useState(false)
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const trimmed = title.trim()
+    if (!trimmed || isPending) return
+
+    setIsPending(true)
+    const ok = await onQuickAdd(status, trimmed)
+    setIsPending(false)
+    // Only clear on success — keep the draft so a failure can be retried.
+    if (ok) setTitle("")
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex items-center gap-1.5">
+      <Input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="+ Add a task…"
+        disabled={isPending}
+        aria-label={`Add a task to ${STATUS_META[status].label}`}
+        className="h-8 flex-1 border-transparent bg-transparent px-2 shadow-none hover:border-border focus-visible:border-ring focus-visible:bg-surface-raised"
+      />
+      <Button
+        type="submit"
+        size="icon"
+        variant="ghost"
+        className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+        disabled={isPending || !title.trim()}
+        aria-label="Add task"
+      >
+        {isPending ? (
+          <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden />
+        ) : (
+          <Plus aria-hidden />
+        )}
+      </Button>
+    </form>
   )
 }
 
