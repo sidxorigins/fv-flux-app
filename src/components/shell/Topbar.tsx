@@ -3,6 +3,11 @@ import { LogOut, UserRound } from "lucide-react";
 
 import { auth, signOut } from "@/lib/auth";
 import { getMyProfile } from "@/features/users/queries";
+import {
+  getMyNotifications,
+  getUnreadNotificationCount,
+} from "@/features/notifications/queries";
+import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { CommandPalette } from "./CommandPalette";
 import { MobileNav } from "./MobileNav";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -42,7 +47,12 @@ async function signOutAction() {
 
 /** Glass topbar (server component). */
 export async function Topbar({ children }: TopbarProps) {
-  const [profile, session] = await Promise.all([getMyProfile(), auth()]);
+  const [profile, session, notifications, unreadCount] = await Promise.all([
+    getMyProfile(),
+    auth(),
+    getMyNotifications(),
+    getUnreadNotificationCount(),
+  ]);
   const isAdmin = session?.user?.globalRole === "ADMIN";
 
   return (
@@ -53,6 +63,10 @@ export async function Topbar({ children }: TopbarProps) {
 
         <div className="flex shrink-0 items-center gap-2">
           <CommandPalette />
+          <NotificationBell
+            notifications={notifications}
+            unreadCount={unreadCount}
+          />
 
           <DropdownMenu>
             <DropdownMenuTrigger

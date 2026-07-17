@@ -23,6 +23,12 @@ import {
   requireProjectRole,
 } from "@/lib/permissions";
 import { sanitizeRichText } from "@/lib/sanitize";
+import {
+  ensureWatching,
+  getTaskAudience,
+  notify,
+} from "@/features/notifications/service";
+import { notifyMentions } from "@/features/notifications/mentions";
 
 import {
   addCommentSchema,
@@ -91,6 +97,24 @@ export async function addComment(
         data: { taskId, actorId: user.id, action: "commented" },
       });
       return created;
+    });
+
+    // The commenter now follows the task. Notify everyone else following it,
+    // then anyone @mentioned in the comment (a mention wins over a plain
+    // "commented" notice — notifyMentions excludes those already mentioned).
+    await ensureWatching(taskId, user.id);
+    const mentioned = await notifyMentions({
+      taskId,
+      projectId: task.projectId,
+      actorId: user.id,
+      html: clean,
+    });
+    const audience = await getTaskAudience(taskId);
+    await notify({
+      recipientIds: audience.filter((id) => !mentioned.includes(id)),
+      actorId: user.id,
+      type: "TASK_COMMENTED",
+      taskId,
     });
 
     revalidate();

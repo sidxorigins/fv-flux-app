@@ -14,6 +14,7 @@ import { getComments } from "@/features/comments/queries"
 import type { CommentWithAuthor } from "@/features/comments/types"
 import { getProject } from "@/features/projects/queries"
 import { getTaskActivity } from "@/features/tasks/activity"
+import { isWatchingTask } from "@/features/notifications/queries"
 import type { ActivityEntry } from "@/features/tasks/activity"
 import {
   AssigneeAvatar,
@@ -191,18 +192,20 @@ export default async function ProjectPage({
     comments: CommentWithAuthor[]
     attachments: AttachmentWithUploader[]
     activity: ActivityEntry[]
+    isWatching: boolean
   } | null = null
 
   if (taskId) {
     try {
       const task = await getTask(taskId)
       if (task && task.projectId === projectId) {
-        const [comments, attachments, activity] = await Promise.all([
+        const [comments, attachments, activity, isWatching] = await Promise.all([
           getComments(taskId),
           getAttachments(taskId),
           getTaskActivity(taskId),
+          isWatchingTask(taskId),
         ])
-        drawerData = { task, comments, attachments, activity }
+        drawerData = { task, comments, attachments, activity, isWatching }
       }
     } catch (err) {
       if (!(err instanceof AuthorizationError)) throw err
@@ -220,6 +223,7 @@ export default async function ProjectPage({
       currentUserId={session.user.id}
       members={members}
       projectLabels={labels}
+      isWatching={drawerData.isWatching}
       canEdit={canEdit}
       canManage={canManage}
     />

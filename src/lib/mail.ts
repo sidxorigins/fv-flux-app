@@ -229,6 +229,113 @@ export async function sendTaskAssignedEmail(
   }
 }
 
+export interface SendMentionEmailParams {
+  to: string;
+  taskKey: string;
+  taskTitle: string;
+  projectName: string;
+  mentionedByName: string;
+  taskUrl: string;
+}
+
+function buildMentionHtml({
+  taskKey,
+  taskTitle,
+  projectName,
+  mentionedByName,
+  taskUrl,
+}: SendMentionEmailParams): string {
+  const key = escapeHtml(taskKey);
+  const title = escapeHtml(taskTitle);
+  const project = escapeHtml(projectName);
+  const who = escapeHtml(mentionedByName);
+  const url = escapeHtml(taskUrl);
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#0a0a0a;font-family:'Outfit',Arial,Helvetica,sans-serif;color:#f5f5f7;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0a;padding:32px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background:#141414;border:1px solid #2a2a2a;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="padding:32px 32px 8px 32px;">
+                <div style="font-size:22px;font-weight:700;color:#f5f5f7;">Flux<span style="color:#ff6b35;">.</span></div>
+                <h1 style="font-size:20px;font-weight:600;margin:20px 0 8px 0;color:#f5f5f7;">${who} mentioned you</h1>
+                <p style="font-size:15px;line-height:1.6;color:#9a9a9a;margin:0 0 20px 0;">
+                  You were mentioned in a comment on <strong style="color:#f5f5f7;">${project}</strong>.
+                </p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#1f1f1f;border:1px solid #2a2a2a;border-radius:10px;">
+                  <tr>
+                    <td style="padding:14px 16px;">
+                      <div style="font-family:Menlo,Consolas,monospace;font-size:12px;color:#9a9a9a;margin-bottom:4px;">${key}</div>
+                      <div style="font-size:15px;font-weight:600;color:#f5f5f7;">${title}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px 32px 32px;">
+                <a href="${url}" style="display:inline-block;background:#ff6b35;color:#0a0a0a;font-weight:600;font-size:15px;text-decoration:none;padding:12px 24px;border-radius:10px;">
+                  View comment
+                </a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function buildMentionText({
+  taskKey,
+  taskTitle,
+  projectName,
+  mentionedByName,
+  taskUrl,
+}: SendMentionEmailParams): string {
+  return [
+    `${mentionedByName} mentioned you in a comment on ${projectName}:`,
+    "",
+    `${taskKey} — ${taskTitle}`,
+    "",
+    "View it:",
+    taskUrl,
+  ].join("\n");
+}
+
+/** "You were mentioned" notification. Same never-throw contract as the rest. */
+export async function sendMentionEmail(
+  params: SendMentionEmailParams,
+): Promise<SendResult> {
+  const transport = getTransport();
+  if (!transport) {
+    console.info(
+      `[mail] SMTP not configured — mention mail for ${params.to}: ${params.taskKey}`,
+    );
+    return { sent: false, reason: "smtp-unconfigured" };
+  }
+  const from = process.env.SMTP_FROM ?? "Flux <no-reply@foodverse.io>";
+  try {
+    await transport.sendMail({
+      from,
+      to: params.to,
+      subject: `${params.mentionedByName} mentioned you — [${params.taskKey}] ${params.taskTitle}`,
+      text: buildMentionText(params),
+      html: buildMentionHtml(params),
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error("[mail] mention send failed", err);
+    return {
+      sent: false,
+      error: err instanceof Error ? err.message : "unknown-error",
+    };
+  }
+}
+
 /**
  * Send an invite email. Returns:
  *   { sent: true }                                    — delivered to SMTP

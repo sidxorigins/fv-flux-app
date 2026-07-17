@@ -65,6 +65,8 @@ export type TaskDrawerProps = {
   attachments?: React.ReactNode
   comments?: React.ReactNode
   activity?: React.ReactNode
+  /** Optional header control (e.g. the watch toggle). */
+  headerAction?: React.ReactNode
   /** Project members offered by the assignee editor. */
   members?: DrawerMember[]
   /** All labels on the project, offered by the label editor. */
@@ -126,6 +128,7 @@ export function TaskDrawer({
   attachments,
   comments,
   activity,
+  headerAction,
   members,
   projectLabels,
   onStatusChange,
@@ -199,18 +202,21 @@ export function TaskDrawer({
                   <span className="font-mono text-xs text-muted-foreground">
                     {task.key}
                   </span>
-                  <SheetClose
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="ml-auto text-muted-foreground"
-                      />
-                    }
-                  >
-                    <X />
-                    <span className="sr-only">Close</span>
-                  </SheetClose>
+                  <div className="ml-auto flex items-center gap-2">
+                    {headerAction}
+                    <SheetClose
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground"
+                        />
+                      }
+                    >
+                      <X />
+                      <span className="sr-only">Close</span>
+                    </SheetClose>
+                  </div>
                 </div>
                 <SheetTitle className="text-lg leading-snug font-semibold text-foreground">
                   {task.title}

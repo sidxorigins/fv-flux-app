@@ -31,6 +31,11 @@ import {
   updateTaskStatusSchema,
 } from "./schemas";
 import { searchEverything, type SearchResults } from "./queries";
+import {
+  ensureWatching,
+  getTaskAudience,
+  notify,
+} from "@/features/notifications/service";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -115,6 +120,9 @@ async function notifyAssignee(params: {
   actorId: string;
   actorName: string;
 }): Promise<void> {
+  // The assignee always watches their task so they get follow-up activity.
+  await ensureWatching(params.taskId, params.assigneeId);
+
   if (params.assigneeId === params.actorId) return;
 
   const task = await prisma.task.findUnique({
@@ -129,6 +137,15 @@ async function notifyAssignee(params: {
   });
   if (!task?.assignee || task.assignee.status !== "ACTIVE") return;
 
+  // In-app notification.
+  await notify({
+    recipientIds: [params.assigneeId],
+    actorId: params.actorId,
+    type: "TASK_ASSIGNED",
+    taskId: params.taskId,
+  });
+
+  // Email.
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
   await sendTaskAssignedEmail({
     to: task.assignee.email,
@@ -412,6 +429,22 @@ export async function updateTask(
       });
     }
 
+    // Status change → notify everyone following the task (watchers + assignee
+    // + reporter), except whoever made the change.
+    if (statusChanged) {
+      const audience = await getTaskAudience(current.id);
+      await notify({
+        recipientIds: audience,
+        actorId: user.id,
+        type: "TASK_STATUS_CHANGED",
+        taskId: current.id,
+        metadata: {
+          from: current.status,
+          to: data.status ?? null,
+        },
+      });
+    }
+
     revalidateProjectViews(current.projectId);
     return { ok: true, data: { id: current.id } };
   } catch (err) {
@@ -587,6 +620,16 @@ export async function updateTaskStatus(
           newValue: parsed.data.status,
         },
       });
+    });
+
+    // Notify followers of the status change (except the actor).
+    const audience = await getTaskAudience(task.id);
+    await notify({
+      recipientIds: audience,
+      actorId: user.id,
+      type: "TASK_STATUS_CHANGED",
+      taskId: task.id,
+      metadata: { from: task.status, to: parsed.data.status },
     });
 
     revalidateProjectViews(task.projectId);
