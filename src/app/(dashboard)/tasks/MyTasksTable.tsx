@@ -49,6 +49,80 @@ function chipTriggerClass() {
 }
 
 /**
+ * A single "my work" row rendered as a stacked card — the below-`sm` fallback
+ * for the table (CLAUDE.md: cramped tables on phones become cards). Same
+ * key/title/status/priority/assignee/due data as the table row; status and
+ * priority render as static badges here rather than the table's inline
+ * quick-change dropdown — card real estate favours a simple read + tap-to-open
+ * over another layer of controls (same trade-off as the backlog's card).
+ */
+function MyTaskCard({
+  task,
+  now,
+  onOpen,
+}: {
+  task: BoardTask
+  now: Date | null
+  onOpen: () => void
+}) {
+  const dueDate = task.dueDate ? new Date(task.dueDate) : null
+  const isOverdue =
+    dueDate !== null &&
+    now !== null &&
+    task.status !== "DONE" &&
+    dueDate.getTime() < now.getTime()
+  const overflowLabels = task.labels.length - 2
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onOpen()
+      }}
+      className="flex cursor-pointer flex-col gap-2 rounded-xl border border-border bg-surface p-3 outline-none focus-visible:bg-muted/50"
+    >
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex items-center gap-1.5">
+            <TypeIcon type={task.type} className="size-3.5 shrink-0" />
+            <span className="font-mono text-xs text-muted-foreground">
+              {task.key}
+            </span>
+          </div>
+          <p className="truncate text-sm text-foreground">{task.title}</p>
+        </div>
+        <AssigneeAvatar user={task.assignee} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <StatusBadge status={task.status} />
+        <PriorityBadge priority={task.priority} />
+        {task.labels.slice(0, 2).map((label) => (
+          <LabelChip key={label.id} label={label} className="max-w-20" />
+        ))}
+        {overflowLabels > 0 ? (
+          <span className="text-[11px] text-muted-foreground">
+            +{overflowLabels}
+          </span>
+        ) : null}
+        {dueDate ? (
+          <span
+            className={cn(
+              "ml-auto text-xs tabular-nums",
+              isOverdue ? "text-danger" : "text-muted-foreground",
+            )}
+          >
+            {formatDueDate(dueDate)}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/**
  * Grouped "my work" table — project key headers, backlog-style rows, inline
  * status quick-change. Row click navigates to the task's OWN project board
  * (`/projects/<projectId>?task=<taskId>`), a real page transition rather than
@@ -82,7 +156,22 @@ export function MyTasksTable({ groups }: { groups: MyTasksGroup[] }) {
             </h2>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-border">
+          {/* Stacked cards below `sm` — the table below cramps on phones. */}
+          <div className="flex flex-col gap-2 sm:hidden">
+            {tasks.map((task) => (
+              <MyTaskCard
+                key={task.id}
+                task={task}
+                now={now}
+                onOpen={() =>
+                  router.push(`/projects/${project.id}?task=${task.id}`)
+                }
+              />
+            ))}
+          </div>
+
+          {/* Table — `sm` and up; the cards above stand in for it on phones. */}
+          <div className="hidden overflow-hidden rounded-xl border border-border sm:block">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
