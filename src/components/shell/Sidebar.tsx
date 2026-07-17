@@ -4,7 +4,8 @@ import { NavLinks } from "./NavLinks";
  * Fixed glass sidebar (server component). The nav's active-link state lives
  * in the small `NavLinks` client child.
  */
-// TODO: mobile navigation (sheet/drawer) — sidebar is hidden below lg for now.
+// Below lg the sidebar is hidden and MobileNav (hamburger + sheet in the
+// topbar) takes over navigation.
 export function Sidebar() {
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 p-3 pr-0 lg:block">

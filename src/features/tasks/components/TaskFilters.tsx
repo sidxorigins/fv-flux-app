@@ -86,8 +86,8 @@ export function TaskFilters({ members, labels }: TaskFiltersProps) {
   }
 
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-      <div className="relative flex-1 sm:min-w-48">
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="relative col-span-2 sm:col-span-1 sm:flex-1 sm:min-w-48">
         <Search
           aria-hidden
           className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
@@ -105,7 +105,7 @@ export function TaskFilters({ members, labels }: TaskFiltersProps) {
         value={status}
         onValueChange={(v) => updateParam("status", v === ALL ? null : v)}
       >
-        <SelectTrigger aria-label="Filter by status" className="w-36">
+        <SelectTrigger aria-label="Filter by status" className="w-full sm:w-36">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -122,7 +122,7 @@ export function TaskFilters({ members, labels }: TaskFiltersProps) {
         value={type}
         onValueChange={(v) => updateParam("type", v === ALL ? null : v)}
       >
-        <SelectTrigger aria-label="Filter by type" className="w-32">
+        <SelectTrigger aria-label="Filter by type" className="w-full sm:w-32">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -139,7 +139,7 @@ export function TaskFilters({ members, labels }: TaskFiltersProps) {
         value={priority}
         onValueChange={(v) => updateParam("priority", v === ALL ? null : v)}
       >
-        <SelectTrigger aria-label="Filter by priority" className="w-36">
+        <SelectTrigger aria-label="Filter by priority" className="w-full sm:w-36">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -157,7 +157,7 @@ export function TaskFilters({ members, labels }: TaskFiltersProps) {
           value={assigneeId}
           onValueChange={(v) => updateParam("assigneeId", v === ALL ? null : v)}
         >
-          <SelectTrigger aria-label="Filter by assignee" className="w-40">
+          <SelectTrigger aria-label="Filter by assignee" className="w-full sm:w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -176,7 +176,7 @@ export function TaskFilters({ members, labels }: TaskFiltersProps) {
           value={labelId}
           onValueChange={(v) => updateParam("labelId", v === ALL ? null : v)}
         >
-          <SelectTrigger aria-label="Filter by label" className="w-36">
+          <SelectTrigger aria-label="Filter by label" className="w-full sm:w-36">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

@@ -180,6 +180,11 @@
 
   html {
     @apply font-sans;
+    /* The window never pans horizontally — wide content (board columns,
+       tables) scrolls inside its own overflow-x-auto container. `hidden`
+       (not `clip`) because only hidden propagates to the viewport in
+       Chromium and actually blocks touch/wheel panning. */
+    overflow-x: hidden;
   }
 
   /* Backdrop: near-black with a soft orange radial glow up top and a faint
@@ -187,6 +192,7 @@
      chrome reads consistently while content scrolls. */
   body {
     @apply bg-background text-foreground;
+    overflow-x: clip;
     background-image:
       radial-gradient(
         80rem 44rem at 68% -12%,

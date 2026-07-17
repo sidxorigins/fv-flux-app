@@ -3,6 +3,7 @@ import { LogOut, Search, UserRound } from "lucide-react";
 
 import { signOut } from "@/lib/auth";
 import { getMyProfile } from "@/features/users/queries";
+import { MobileNav } from "./MobileNav";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,6 +47,7 @@ export async function Topbar({ children }: TopbarProps) {
   return (
     <header className="sticky top-0 z-40 px-4 pt-3 sm:px-6 lg:px-8">
       <div className="glass flex h-14 items-center justify-between gap-4 px-3 sm:px-4">
+        <MobileNav />
         <div className="min-w-0 flex-1">{children}</div>
 
         <div className="flex shrink-0 items-center gap-2">
