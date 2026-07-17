@@ -174,6 +174,22 @@ export async function listAssignableUsers(): Promise<AssignableUser[]> {
   return users;
 }
 
+/**
+ * Assignable users for a project's MANAGER to add — same shape as
+ * `listAssignableUsers` but scoped to a project the caller manages (delegation:
+ * a project MANAGER, or a global Admin, may list users to grant access).
+ */
+export async function listAssignableUsersForProject(
+  projectId: string,
+): Promise<AssignableUser[]> {
+  await requireProjectRole(projectId, "MANAGER");
+  return prisma.user.findMany({
+    where: { status: { not: "SUSPENDED" } },
+    orderBy: [{ name: "asc" }],
+    select: { id: true, name: true, username: true, email: true, status: true },
+  });
+}
+
 // ── Invites ─────────────────────────────────────────────────────────────────
 export interface AdminInviteRow {
   id: string;

@@ -43,6 +43,11 @@ interface ProjectMembersEditorProps {
   projectName: string;
   members: AdminProjectMember[];
   users: AssignableUser[];
+  /**
+   * Link each member to their admin user page. True in the admin area; false
+   * on the project page (a non-admin MANAGER can't reach /admin/users).
+   */
+  linkToAdmin?: boolean;
 }
 
 /**
@@ -55,6 +60,7 @@ export function ProjectMembersEditor({
   projectName,
   members,
   users,
+  linkToAdmin = true,
 }: ProjectMembersEditorProps) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
@@ -163,22 +169,35 @@ export function ProjectMembersEditor({
               {members.map((m) => (
                 <TableRow key={m.userId}>
                   <TableCell>
-                    <Link
-                      href={`/admin/users/${m.userId}`}
-                      className="flex items-center gap-2.5 outline-none hover:underline focus-visible:underline"
-                    >
-                      <Avatar size="sm">
-                        <AvatarFallback className="text-[10px]">
-                          {initials(m.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="flex min-w-0 flex-col leading-tight">
-                        <span className="truncate font-medium text-foreground">{m.name}</span>
-                        <span className="truncate font-mono text-xs text-muted-foreground">
-                          @{m.username}
-                        </span>
-                      </span>
-                    </Link>
+                    {(() => {
+                      const body = (
+                        <>
+                          <Avatar size="sm">
+                            <AvatarFallback className="text-[10px]">
+                              {initials(m.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="flex min-w-0 flex-col leading-tight">
+                            <span className="truncate font-medium text-foreground">
+                              {m.name}
+                            </span>
+                            <span className="truncate font-mono text-xs text-muted-foreground">
+                              @{m.username}
+                            </span>
+                          </span>
+                        </>
+                      );
+                      return linkToAdmin ? (
+                        <Link
+                          href={`/admin/users/${m.userId}`}
+                          className="flex items-center gap-2.5 outline-none hover:underline focus-visible:underline"
+                        >
+                          {body}
+                        </Link>
+                      ) : (
+                        <span className="flex items-center gap-2.5">{body}</span>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     <UserStatusBadge status={m.status} />

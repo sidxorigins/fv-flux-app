@@ -13,6 +13,10 @@ import type { AttachmentWithUploader } from "@/features/attachments/types"
 import { getComments } from "@/features/comments/queries"
 import type { CommentWithAuthor } from "@/features/comments/types"
 import { getProject } from "@/features/projects/queries"
+import {
+  getProjectMembers,
+  listAssignableUsersForProject,
+} from "@/features/admin/queries"
 import { getTaskActivity } from "@/features/tasks/activity"
 import { isWatchingTask } from "@/features/notifications/queries"
 import type { ActivityEntry } from "@/features/tasks/activity"
@@ -35,6 +39,7 @@ import {
 } from "@/features/tasks/queries"
 import { getSavedViews } from "@/features/saved-views/queries"
 
+import { ManageMembersDialog } from "./ManageMembersDialog"
 import { ProjectSettingsMenu } from "./ProjectSettingsMenu"
 import { ViewTabs } from "./ViewTabs"
 
@@ -111,6 +116,15 @@ export default async function ProjectPage({
   const canManage = PROJECT_ROLE_ORDER[myRole] >= PROJECT_ROLE_ORDER.MANAGER
 
   const members = project.memberships.map((m) => m.user)
+
+  // MANAGERs (and admins) can manage members from the project page — fetch the
+  // detailed member list + assignable users only when that UI will render.
+  const memberAdmin = canManage
+    ? await Promise.all([
+        getProjectMembers(projectId),
+        listAssignableUsersForProject(projectId),
+      ])
+    : null
 
   const view = sp.view === "backlog" ? "backlog" : "board"
   const taskId = asString(sp.task) ?? null
@@ -314,6 +328,14 @@ export default async function ProjectPage({
               labels={labels}
               canEdit={canEdit}
               canManage={canManage}
+            />
+          ) : null}
+          {canManage && memberAdmin && memberAdmin[0] ? (
+            <ManageMembersDialog
+              projectId={projectId}
+              projectName={project.name}
+              members={memberAdmin[0].members}
+              users={memberAdmin[1]}
             />
           ) : null}
           <ProjectSettingsMenu

@@ -1,7 +1,6 @@
 import Link from "next/link"
 import { FolderKanban } from "lucide-react"
 
-import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { Badge } from "@/components/ui/badge"
 import { getMyProjects } from "@/features/projects/queries"
@@ -16,8 +15,7 @@ const ROLE_LABEL: Record<ProjectRole, string> = {
 }
 
 export default async function ProjectsPage() {
-  const [session, projects] = await Promise.all([auth(), getMyProjects()])
-  const isAdmin = session?.user?.globalRole === "ADMIN"
+  const projects = await getMyProjects()
 
   // getMyProjects() doesn't hydrate the lead relation (that's ProjectDetail's
   // job, via getProject) — one small batched lookup for the card's "lead"
@@ -42,7 +40,8 @@ export default async function ProjectsPage() {
             Projects you have access to.
           </p>
         </div>
-        {isAdmin ? <CreateProjectDialog /> : null}
+        {/* Any active user can create a project (they become its manager). */}
+        <CreateProjectDialog />
       </div>
 
       {projects.length === 0 ? (
@@ -50,7 +49,7 @@ export default async function ProjectsPage() {
           <FolderKanban aria-hidden className="size-8 text-muted-foreground" />
           <p className="max-w-sm text-sm text-muted-foreground">
             You don&apos;t have access to any projects yet — an admin will add
-            you.
+            you, or create one to get started.
           </p>
         </div>
       ) : (

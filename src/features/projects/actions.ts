@@ -6,10 +6,11 @@
 // never has to catch thrown errors.
 //
 // AUTHORISATION MODEL (v1, documented):
-//   - Creating and deleting a project are ADMIN-level platform actions (a project is
-//     an org-wide container; spinning one up / tearing one down is deliberate and
-//     rare — CLAUDE.md marks project deletion Admin-only, and we treat creation the
-//     same way for symmetry).
+//   - Creating a project is open to any active user — the creator becomes the
+//     project's lead and MANAGER (self-service; only a global Admin may hand the
+//     lead to someone else).
+//   - Deleting a project is an ADMIN-level platform action (tearing down an
+//     org-wide container is deliberate and rare — CLAUDE.md marks it Admin-only).
 //   - Editing an existing project (name / description / lead) is a project MANAGER
 //     action (or a global Admin via the bypass policy in lib/permissions).
 
@@ -20,6 +21,7 @@ import {
   AuthorizationError,
   requireAdmin,
   requireProjectRole,
+  requireUser,
 } from "@/lib/permissions";
 import { createProjectSchema, updateProjectSchema } from "./schemas";
 
@@ -77,14 +79,14 @@ function revalidateProjectViews(projectId: string): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// createProject — ADMIN only
+// createProject — any active user (creator becomes lead + MANAGER)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Create a project. The lead defaults to the creating admin; both the creator and
- * the lead (if different) are added as MANAGER members so they can immediately act
- * on the project. Writes an AuditLog entry. A duplicate `key` returns a friendly
- * error rather than throwing.
+ * Create a project. The lead defaults to the creator; only a global Admin may
+ * assign a different lead. Both the creator and the lead (if different) are added
+ * as MANAGER members so they can immediately act on the project. Writes an
+ * AuditLog entry. A duplicate `key` returns a friendly error rather than throwing.
  */
 export async function createProject(
   input: unknown,
@@ -96,13 +98,17 @@ export async function createProject(
   const { key, name, description, leadId } = parsed.data;
 
   try {
-    const admin = await requireAdmin();
-    const resolvedLeadId = leadId ?? admin.id;
+    // Any active user may create a project — the creator becomes its lead and
+    // MANAGER. Only a global Admin may hand the lead to someone else; a regular
+    // creator always leads their own project.
+    const creator = await requireUser();
+    const isAdmin = creator.globalRole === "ADMIN";
+    const resolvedLeadId = isAdmin ? (leadId ?? creator.id) : creator.id;
 
     const project = await prisma.$transaction(async (tx) => {
       // Validate an explicitly-supplied lead exists and is active. (When the lead
-      // is the creator we already know they're active from requireAdmin.)
-      if (resolvedLeadId !== admin.id) {
+      // is the creator we already know they're active from requireUser.)
+      if (resolvedLeadId !== creator.id) {
         const lead = await tx.user.findUnique({
           where: { id: resolvedLeadId },
           select: { status: true },
@@ -118,7 +124,7 @@ export async function createProject(
       });
 
       // Unique userIds → one MANAGER membership each (creator + lead).
-      const managerIds = [...new Set([admin.id, resolvedLeadId])];
+      const managerIds = [...new Set([creator.id, resolvedLeadId])];
       await tx.projectMembership.createMany({
         data: managerIds.map((userId) => ({
           projectId: created.id,
@@ -129,7 +135,7 @@ export async function createProject(
 
       await tx.auditLog.create({
         data: {
-          actorId: admin.id,
+          actorId: creator.id,
           action: "project.created",
           targetType: "Project",
           targetId: created.id,

@@ -33,15 +33,17 @@ import { Textarea } from "@/components/ui/textarea"
 import { createProject } from "@/features/projects/actions"
 import { createProjectSchema } from "@/features/projects/schemas"
 
-// Admin creates the lead server-side (defaults to the creating admin) — the
-// dialog only collects what the admin actually decides here.
+// The lead is resolved server-side (the creator, unless an admin reassigns it),
+// so the dialog never collects leadId — the creator always leads their own
+// project.
 const formSchema = createProjectSchema.omit({ leadId: true })
 type FormValues = z.infer<typeof formSchema>
 
 /**
- * Admin-only "New project" dialog. Reuses `createProjectSchema` (minus
- * `leadId`) so client-side validation never drifts from what the Server
- * Action enforces. On success, hands off straight to the new project.
+ * "New project" dialog — open to any active user, who becomes the project's
+ * lead and MANAGER. Reuses `createProjectSchema` (minus `leadId`) so
+ * client-side validation never drifts from what the Server Action enforces. On
+ * success, hands off straight to the new project.
  */
 export function CreateProjectDialog() {
   const router = useRouter()
