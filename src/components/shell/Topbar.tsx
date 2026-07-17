@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -82,17 +83,20 @@ export async function Topbar({ children }: TopbarProps) {
               </Avatar>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">
-              <DropdownMenuLabel className="flex flex-col gap-0.5 px-2 py-1.5">
-                <span className="truncate text-sm font-medium text-foreground">
-                  {profile.name}
-                </span>
-                <span className="truncate text-xs text-muted-foreground">
-                  @{profile.username}
-                </span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {profile.email}
-                </span>
-              </DropdownMenuLabel>
+              {/* Base UI requires GroupLabel to live inside a Group. */}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="flex flex-col gap-0.5 px-2 py-1.5">
+                  <span className="truncate text-sm font-medium text-foreground">
+                    {profile.name}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    @{profile.username}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {profile.email}
+                  </span>
+                </DropdownMenuLabel>
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem render={<Link href="/profile" />}>
                 <UserRound aria-hidden />
