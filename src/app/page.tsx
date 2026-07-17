@@ -194,7 +194,7 @@ export default async function Home() {
       <footer className="border-t border-border">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-6 px-6 py-8 sm:flex-row">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">Part of</span>
+            <span className="text-xs text-muted-foreground">Powered by</span>
             <a
               href="https://foodverse.io"
               rel="noreferrer"
