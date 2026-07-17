@@ -5,7 +5,7 @@ import { ArrowRight, FileText, ScrollText, UsersRound } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { LetterRain, ScrambledTitle } from "@/components/ui/raining-letters";
+import { LetterRain } from "@/components/ui/raining-letters";
 
 /**
  * Public landing page — the only unauthenticated page besides the auth flows.
@@ -16,14 +16,6 @@ import { LetterRain, ScrambledTitle } from "@/components/ui/raining-letters";
  * scramble-decoding headline. Everything animated is client-side garnish;
  * the copy, CTAs, features and footer are server-rendered.
  */
-
-const HERO_PHRASES = [
-  "Work in motion.",
-  "Plan the sprint.",
-  "Move the board.",
-  "Ship the work.",
-  "Flux.",
-];
 
 const FEATURES = [
   {
@@ -71,15 +63,12 @@ export default async function Home() {
         </header>
 
         <div className="relative z-20 mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center gap-6 px-6 pb-20 text-center">
-          <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
-            Internal · Invite-only
-          </p>
-
-          <ScrambledTitle
-            phrases={HERO_PHRASES}
-            label="Flux — work in motion"
-            className="min-h-[2.4em] text-5xl leading-tight font-bold tracking-tight text-foreground sm:min-h-[1.2em] sm:text-7xl"
-          />
+          <h1 className="text-8xl leading-none font-bold tracking-tight text-foreground sm:text-9xl">
+            Flux
+            <span aria-hidden className="text-primary">
+              .
+            </span>
+          </h1>
 
           <p className="max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
             Flux is where Foodverse teams plan projects, move tasks across the
