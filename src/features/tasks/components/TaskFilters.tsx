@@ -251,6 +251,46 @@ export function TaskFilters({
   const assigneeId = searchParams.get("assigneeId") ?? ALL
   const labelId = searchParams.get("labelId") ?? ALL
 
+  // Base UI's <SelectValue> renders the raw value unless the Root is given an
+  // `items` value→label map — without these the triggers show "ALL"/enum/id.
+  const statusItems = React.useMemo(
+    () => ({
+      [ALL]: "All statuses",
+      ...Object.fromEntries(STATUS_ORDER.map((s) => [s, STATUS_META[s].label])),
+    }),
+    [],
+  )
+  const typeItems = React.useMemo(
+    () => ({
+      [ALL]: "All types",
+      ...Object.fromEntries(TYPE_ORDER.map((t) => [t, TYPE_META[t].label])),
+    }),
+    [],
+  )
+  const priorityItems = React.useMemo(
+    () => ({
+      [ALL]: "All priorities",
+      ...Object.fromEntries(
+        PRIORITY_ORDER.map((p) => [p, PRIORITY_META[p].label]),
+      ),
+    }),
+    [],
+  )
+  const assigneeItems = React.useMemo(
+    () => ({
+      [ALL]: "All assignees",
+      ...Object.fromEntries(members.map((m) => [m.id, m.name])),
+    }),
+    [members],
+  )
+  const labelItems = React.useMemo(
+    () => ({
+      [ALL]: "All labels",
+      ...Object.fromEntries(labels.map((l) => [l.id, l.name])),
+    }),
+    [labels],
+  )
+
   const hasActiveFilters =
     status !== ALL ||
     type !== ALL ||
@@ -286,6 +326,7 @@ export function TaskFilters({
 
       <Select
         value={status}
+        items={statusItems}
         onValueChange={(v) => updateParam("status", v === ALL ? null : v)}
       >
         <SelectTrigger aria-label="Filter by status" className="w-full sm:w-36">
@@ -303,6 +344,7 @@ export function TaskFilters({
 
       <Select
         value={type}
+        items={typeItems}
         onValueChange={(v) => updateParam("type", v === ALL ? null : v)}
       >
         <SelectTrigger aria-label="Filter by type" className="w-full sm:w-32">
@@ -320,6 +362,7 @@ export function TaskFilters({
 
       <Select
         value={priority}
+        items={priorityItems}
         onValueChange={(v) => updateParam("priority", v === ALL ? null : v)}
       >
         <SelectTrigger aria-label="Filter by priority" className="w-full sm:w-36">
@@ -338,6 +381,7 @@ export function TaskFilters({
       {members.length > 0 ? (
         <Select
           value={assigneeId}
+          items={assigneeItems}
           onValueChange={(v) => updateParam("assigneeId", v === ALL ? null : v)}
         >
           <SelectTrigger aria-label="Filter by assignee" className="w-full sm:w-40">
@@ -357,6 +401,7 @@ export function TaskFilters({
       {labels.length > 0 ? (
         <Select
           value={labelId}
+          items={labelItems}
           onValueChange={(v) => updateParam("labelId", v === ALL ? null : v)}
         >
           <SelectTrigger aria-label="Filter by label" className="w-full sm:w-36">
