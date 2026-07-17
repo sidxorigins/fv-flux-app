@@ -308,7 +308,8 @@ export async function createUser(
         error: parsed.error.issues[0]?.message ?? "Invalid input",
       };
     }
-    const { email, name, username, intendedGlobalRole } = parsed.data;
+    const { email, name, username, intendedGlobalRole, projectGrants } =
+      parsed.data;
 
     // Admin-facing: clear, specific messages (see enumeration note on sendInvite).
     const [byEmail, byUsername] = await Promise.all([
@@ -317,6 +318,21 @@ export async function createUser(
     ]);
     if (byEmail) return { ok: false, error: "A user with that email already exists." };
     if (byUsername) return { ok: false, error: "That username is already taken." };
+
+    // Dedupe grants by project (last role wins) and confirm every project
+    // exists before we create anything.
+    const grantsByProject = new Map(
+      projectGrants.map((g) => [g.projectId, g.projectRole]),
+    );
+    if (grantsByProject.size > 0) {
+      const found = await prisma.project.findMany({
+        where: { id: { in: [...grantsByProject.keys()] } },
+        select: { id: true },
+      });
+      if (found.length !== grantsByProject.size) {
+        return { ok: false, error: "One or more selected projects don't exist." };
+      }
+    }
 
     const raw = generateInviteToken();
     const tokenHash = hashToken(raw);
@@ -354,9 +370,28 @@ export async function createUser(
             intendedGlobalRole,
             mode: "invite-link",
             inviteId: invite.id,
+            grantedProjects: grantsByProject.size,
           },
         },
       });
+
+      // Grant the chosen project access up front + audit each grant (same
+      // "membership.granted" action as addProjectMember) so the new user has
+      // something to see on first login.
+      for (const [projectId, projectRole] of grantsByProject) {
+        await tx.projectMembership.create({
+          data: { projectId, userId: created.id, projectRole },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: admin.id,
+            action: "membership.granted",
+            targetType: "ProjectMembership",
+            targetId: created.id,
+            metadata: { projectId, userId: created.id, projectRole },
+          },
+        });
+      }
       return created;
     });
 

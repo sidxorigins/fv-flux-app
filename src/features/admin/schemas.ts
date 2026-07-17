@@ -47,6 +47,19 @@ export const createUserSchema = z.object({
   username: usernameSchema,
   intendedGlobalRole: globalRoleSchema.default("USER"),
   mode: z.literal("invite-link").default("invite-link"),
+  // Optional per-project access granted at creation, so the new user lands on
+  // a visible project at first login instead of the empty "an admin will add
+  // you" state. Deduped/validated server-side.
+  projectGrants: z
+    .array(
+      z.object({
+        projectId: z.string().min(1),
+        projectRole: projectRoleSchema,
+      }),
+    )
+    .max(50)
+    .optional()
+    .default([]),
 });
 
 export const changeGlobalRoleSchema = z.object({

@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth";
-import { searchUsers } from "@/features/admin/queries";
+import { getProjects, searchUsers } from "@/features/admin/queries";
 import { userSearchSchema } from "@/features/admin/schemas";
 import { CreateUserDialog } from "@/features/admin/components/CreateUserDialog";
 import { CursorPager } from "@/features/admin/components/CursorPager";
@@ -19,7 +19,10 @@ export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
   const session = await auth();
   const currentUserId = session?.user?.id ?? "";
 
-  const { items, nextCursor } = await searchUsers(params);
+  const [{ items, nextCursor }, projects] = await Promise.all([
+    searchUsers(params),
+    getProjects(),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -29,7 +32,13 @@ export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
           initialStatus={params.status ?? null}
         />
         <div className="shrink-0">
-          <CreateUserDialog />
+          <CreateUserDialog
+            projects={projects.map((p) => ({
+              id: p.id,
+              key: p.key,
+              name: p.name,
+            }))}
+          />
         </div>
       </div>
 
