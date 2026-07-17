@@ -2,9 +2,28 @@
 
 import * as React from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { ArrowDown, ArrowUp, Check, ChevronDown } from "lucide-react"
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronDown,
+  Trash2,
+  X,
+} from "lucide-react"
 import { toast } from "sonner"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +42,7 @@ import { cn } from "@/lib/utils"
 import type { TaskPriority, TaskStatus } from "@/generated/prisma/client"
 
 import { updateTask, updateTaskStatus } from "../actions"
+import { bulkDeleteTasks, bulkUpdateTaskStatus } from "../bulk-actions"
 // Type-only — fully erased at compile time (tsconfig `isolatedModules`), so this
 // never pulls the Prisma-backed queries module into the client bundle. See
 // BACKLOG_SORT_DEFAULT_DIR below for why the *values* have to be redeclared here.
@@ -159,6 +179,170 @@ function SortableColumnHead({
 }
 
 /**
+ * Bulk-selection toolbar — appears once ≥1 row is selected. Status change goes
+ * through a dropdown (same STATUS_ORDER/STATUS_META list as the per-row quick
+ * change); delete only opens the caller's confirm dialog — the actual delete
+ * happens after confirmation there.
+ */
+function BulkToolbar({
+  selectedCount,
+  busy,
+  onChangeStatus,
+  onDeleteClick,
+  onClear,
+}: {
+  selectedCount: number
+  busy: boolean
+  onChangeStatus: (status: TaskStatus) => void
+  onDeleteClick: () => void
+  onClear: () => void
+}) {
+  if (selectedCount === 0) return null
+
+  return (
+    <div className="glass flex flex-wrap items-center gap-2 rounded-xl px-3 py-2">
+      <span className="text-sm font-medium text-foreground">
+        {selectedCount} selected
+      </span>
+      <div className="ml-auto flex items-center gap-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="outline" size="sm" disabled={busy} />}
+          >
+            Set status
+            <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-40">
+            {STATUS_ORDER.map((status) => (
+              <DropdownMenuItem
+                key={status}
+                onClick={() => onChangeStatus(status)}
+              >
+                <span
+                  className={cn(
+                    "size-2 rounded-full",
+                    STATUS_META[status].dotClass,
+                  )}
+                  aria-hidden
+                />
+                {STATUS_META[status].label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button
+          variant="destructive"
+          size="sm"
+          disabled={busy}
+          onClick={onDeleteClick}
+        >
+          <Trash2 aria-hidden />
+          Delete
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled={busy}
+          onClick={onClear}
+          aria-label="Clear selection"
+        >
+          <X aria-hidden />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A single backlog row rendered as a stacked card — the below-`sm` fallback for
+ * the table (CLAUDE.md: cramped tables on phones become cards). Shows the same
+ * key/title/status/priority/assignee/due data as the table row, plus the
+ * selection checkbox when `canEdit`. Status/priority render as static badges
+ * here (not the table's inline quick-change dropdowns) — card real estate
+ * favours a simple read + tap-to-open over another layer of controls.
+ */
+function TaskRowCard({
+  task,
+  now,
+  canEdit,
+  selected,
+  onToggleSelect,
+  onOpen,
+}: {
+  task: BoardTask
+  now: Date | null
+  canEdit: boolean
+  selected: boolean
+  onToggleSelect: () => void
+  onOpen: () => void
+}) {
+  const dueDate = task.dueDate ? new Date(task.dueDate) : null
+  const isOverdue =
+    dueDate !== null &&
+    now !== null &&
+    task.status !== "DONE" &&
+    dueDate.getTime() < now.getTime()
+  const overflowLabels = task.labels.length - 2
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onOpen()
+      }}
+      className="flex cursor-pointer flex-col gap-2 rounded-xl border border-border bg-surface p-3 outline-none focus-visible:bg-muted/50"
+    >
+      <div className="flex items-start gap-2">
+        {canEdit ? (
+          <span className="pt-0.5" onClick={(event) => event.stopPropagation()}>
+            <Checkbox
+              checked={selected}
+              onCheckedChange={onToggleSelect}
+              aria-label={`Select ${task.key}`}
+            />
+          </span>
+        ) : null}
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex items-center gap-1.5">
+            <TypeIcon type={task.type} className="size-3.5 shrink-0" />
+            <span className="font-mono text-xs text-muted-foreground">
+              {task.key}
+            </span>
+          </div>
+          <p className="truncate text-sm text-foreground">{task.title}</p>
+        </div>
+        <AssigneeAvatar user={task.assignee} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <StatusBadge status={task.status} />
+        <PriorityBadge priority={task.priority} />
+        {task.labels.slice(0, 2).map((label) => (
+          <LabelChip key={label.id} label={label} className="max-w-20" />
+        ))}
+        {overflowLabels > 0 ? (
+          <span className="text-[11px] text-muted-foreground">
+            +{overflowLabels}
+          </span>
+        ) : null}
+        {dueDate ? (
+          <span
+            className={cn(
+              "ml-auto text-xs tabular-nums",
+              isOverdue ? "text-danger" : "text-muted-foreground",
+            )}
+          >
+            {formatDueDate(dueDate)}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/**
  * Backlog table — client shell for interactions: row click opens the
  * URL-driven drawer (`?task=<id>`, preserving the current view + filters),
  * and (when `canEdit`) status/priority cells become inline quick-change
@@ -173,6 +357,39 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
   // Resolved client-side only (server/first-paint render see `null`) so the
   // overdue tint never causes an SSR/hydration mismatch — see hooks.ts.
   const now = useClientNow()
+
+  // Multi-select for the bulk toolbar — ids from the CURRENT page of `tasks`
+  // only (pagination is cursor-based; selection doesn't carry across pages).
+  // `selected` is derived from the raw state, filtered down to ids still
+  // present in `tasks`, so a stale id from a previous filter/sort/page never
+  // lingers in the count — computed at render time rather than pruned via a
+  // setState-in-effect (which would trigger an extra cascading render).
+  const [rawSelected, setSelected] = React.useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = React.useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false)
+  const selected = React.useMemo(() => {
+    const visible = new Set(tasks.map((t) => t.id))
+    const next = new Set([...rawSelected].filter((id) => visible.has(id)))
+    return next.size === rawSelected.size ? rawSelected : next
+  }, [rawSelected, tasks])
+
+  const allSelected = tasks.length > 0 && tasks.every((t) => selected.has(t.id))
+  const someSelected = selected.size > 0 && !allSelected
+
+  function toggleOne(taskId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    setSelected((prev) =>
+      tasks.every((t) => prev.has(t.id)) ? new Set() : new Set(tasks.map((t) => t.id)),
+    )
+  }
 
   const sortParam = searchParams.get("sort")
   const currentSort = isSortField(sortParam) ? sortParam : null
@@ -225,6 +442,43 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
     })
   }
 
+  async function bulkChangeStatus(status: TaskStatus) {
+    const ids = [...selected]
+    if (ids.length === 0) return
+    setBulkBusy(true)
+    try {
+      const res = await bulkUpdateTaskStatus(ids, status)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      toast.success(`Updated ${ids.length} task${ids.length === 1 ? "" : "s"}`)
+      setSelected(new Set())
+      router.refresh()
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  async function confirmBulkDelete() {
+    const ids = [...selected]
+    if (ids.length === 0) return
+    setBulkBusy(true)
+    try {
+      const res = await bulkDeleteTasks(ids)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      toast.success(`Deleted ${ids.length} task${ids.length === 1 ? "" : "s"}`)
+      setSelected(new Set())
+      setConfirmDeleteOpen(false)
+      router.refresh()
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
   if (tasks.length === 0) {
     return (
       <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
@@ -234,10 +488,58 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border">
+    <div className="flex flex-col gap-3">
+      {canEdit ? (
+        <BulkToolbar
+          selectedCount={selected.size}
+          busy={bulkBusy}
+          onChangeStatus={bulkChangeStatus}
+          onDeleteClick={() => setConfirmDeleteOpen(true)}
+          onClear={() => setSelected(new Set())}
+        />
+      ) : null}
+
+      {/* Stacked cards below `sm` — the table below cramps on phones. */}
+      <div className="flex flex-col gap-2 sm:hidden">
+        {canEdit ? (
+          <label className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+            <Checkbox
+              checked={allSelected}
+              indeterminate={someSelected}
+              onCheckedChange={toggleAll}
+              aria-label="Select all tasks"
+            />
+            Select all
+          </label>
+        ) : null}
+        {tasks.map((task) => (
+          <TaskRowCard
+            key={task.id}
+            task={task}
+            now={now}
+            canEdit={canEdit}
+            selected={selected.has(task.id)}
+            onToggleSelect={() => toggleOne(task.id)}
+            onOpen={() => openTask(task.id)}
+          />
+        ))}
+      </div>
+
+      {/* Table — `sm` and up; the cards above stand in for it on phones. */}
+      <div className="hidden overflow-hidden rounded-xl border border-border sm:block">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
+            {canEdit ? (
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelected}
+                  indeterminate={someSelected}
+                  onCheckedChange={toggleAll}
+                  aria-label="Select all tasks"
+                />
+              </TableHead>
+            ) : null}
             <SortableColumnHead
               field="key"
               className="w-24"
@@ -298,6 +600,15 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
                 }}
                 className="cursor-pointer outline-none focus-visible:bg-muted/50"
               >
+                {canEdit ? (
+                  <TableCell onClick={(event) => event.stopPropagation()}>
+                    <Checkbox
+                      checked={selected.has(task.id)}
+                      onCheckedChange={() => toggleOne(task.id)}
+                      aria-label={`Select ${task.key}`}
+                    />
+                  </TableCell>
+                ) : null}
                 <TableCell className="font-mono text-xs text-muted-foreground">
                   {task.key}
                 </TableCell>
@@ -430,6 +741,31 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
           })}
         </TableBody>
       </Table>
+      </div>
+
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {selected.size} task{selected.size === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the selected tasks, their comments, and
+              attachments. Subtasks are kept and un-parented.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={bulkBusy}
+              onClick={confirmBulkDelete}
+            >
+              {bulkBusy ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

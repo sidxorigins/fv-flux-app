@@ -2,10 +2,12 @@
 
 import * as React from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Search, X } from "lucide-react"
+import { Bookmark, Loader2, Save, Search, Trash2, X } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -13,7 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
 import type { Label as ProjectLabel, User } from "@/generated/prisma/client"
+
+import { createSavedView, deleteSavedView } from "@/features/saved-views/actions"
+import type { SavedViewSummary } from "@/features/saved-views/queries"
 
 import { PRIORITY_META, PRIORITY_ORDER } from "./PriorityBadge"
 import { STATUS_META, STATUS_ORDER } from "./StatusBadge"
@@ -28,6 +34,178 @@ const FILTER_KEYS = ["status", "type", "priority", "assigneeId", "labelId", "q"]
 export interface TaskFiltersProps {
   members: Member[]
   labels: ProjectLabel[]
+  projectId: string
+  savedViews: SavedViewSummary[]
+}
+
+/**
+ * Compact "Views" popover: save the current filter/sort URL under a name and
+ * re-apply or delete saved ones later. Selecting a view fully replaces the URL
+ * with its stored query (it was captured from `searchParams.toString()` at save
+ * time, so it already carries `view=backlog` and everything else needed to land
+ * back on this same screen) — nothing from the current URL is merged in.
+ */
+function SavedViewsMenu({
+  projectId,
+  savedViews,
+}: {
+  projectId: string
+  savedViews: SavedViewSummary[]
+}) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const [open, setOpen] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
+  const [newName, setNewName] = React.useState("")
+  const [isPending, startTransition] = React.useTransition()
+
+  function applyView(query: string) {
+    setOpen(false)
+    router.replace(query ? `${pathname}?${query}` : pathname)
+  }
+
+  function onSave(event: React.FormEvent) {
+    event.preventDefault()
+    const name = newName.trim()
+    if (!name) return
+    startTransition(async () => {
+      const res = await createSavedView({
+        projectId,
+        name,
+        query: searchParams.toString(),
+      })
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      toast.success(`Saved view "${name}"`)
+      setNewName("")
+      setSaving(false)
+      router.refresh()
+    })
+  }
+
+  function onDelete(id: string, name: string) {
+    startTransition(async () => {
+      const res = await deleteSavedView(id)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      toast.success(`Deleted view "${name}"`)
+      router.refresh()
+    })
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) {
+          setSaving(false)
+          setNewName("")
+        }
+      }}
+    >
+      <PopoverTrigger
+        render={<Button variant="outline" size="sm" aria-label="Saved views" />}
+      >
+        <Bookmark aria-hidden />
+        Views
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64">
+        {savedViews.length === 0 ? (
+          <p className="px-1 py-1 text-sm text-muted-foreground">
+            No saved views yet.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-0.5">
+            {savedViews.map((view) => (
+              <li key={view.id} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => applyView(view.query)}
+                  disabled={isPending}
+                  className="flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors duration-150 hover:bg-surface-raised motion-reduce:transition-none"
+                >
+                  {view.name}
+                </button>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  className="shrink-0 text-muted-foreground hover:text-danger"
+                  onClick={() => onDelete(view.id, view.name)}
+                  disabled={isPending}
+                  aria-label={`Delete view ${view.name}`}
+                >
+                  <Trash2 aria-hidden />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <Separator className="my-2" />
+
+        {saving ? (
+          <form onSubmit={onSave} className="flex items-center gap-1.5">
+            <Input
+              autoFocus
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="View name…"
+              maxLength={40}
+              disabled={isPending}
+              aria-label="New view name"
+              className="h-8 flex-1"
+            />
+            <Button
+              type="submit"
+              size="icon-sm"
+              disabled={isPending || !newName.trim()}
+              aria-label="Save view"
+            >
+              {isPending ? (
+                <Loader2
+                  className="animate-spin motion-reduce:animate-none"
+                  aria-hidden
+                />
+              ) : (
+                <Save aria-hidden />
+              )}
+            </Button>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => {
+                setSaving(false)
+                setNewName("")
+              }}
+              disabled={isPending}
+              aria-label="Cancel"
+            >
+              <X aria-hidden />
+            </Button>
+          </form>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start text-muted-foreground"
+            onClick={() => setSaving(true)}
+          >
+            <Save aria-hidden />
+            Save current view…
+          </Button>
+        )}
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 /**
@@ -37,7 +215,12 @@ export interface TaskFiltersProps {
  * filtering too. Search is debounced; changing any filter resets `cursor` so
  * pagination restarts from page one.
  */
-export function TaskFilters({ members, labels }: TaskFiltersProps) {
+export function TaskFilters({
+  members,
+  labels,
+  projectId,
+  savedViews,
+}: TaskFiltersProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -189,6 +372,8 @@ export function TaskFilters({ members, labels }: TaskFiltersProps) {
           </SelectContent>
         </Select>
       ) : null}
+
+      <SavedViewsMenu projectId={projectId} savedViews={savedViews} />
 
       {hasActiveFilters ? (
         <Button
