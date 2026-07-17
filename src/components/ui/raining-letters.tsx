@@ -124,6 +124,8 @@ interface ScrambledTitleProps {
   className?: string;
   /** Milliseconds a decoded phrase stays before the next scramble. */
   holdMs?: number;
+  /** Element to render as — h1 by default; pass "p" when it's a tagline. */
+  as?: React.ElementType;
 }
 
 export function ScrambledTitle({
@@ -131,6 +133,7 @@ export function ScrambledTitle({
   label,
   className,
   holdMs = 2200,
+  as: Tag = "h1",
 }: ScrambledTitleProps) {
   const elementRef = useRef<HTMLSpanElement>(null);
   const scramblerRef = useRef<TextScramble | null>(null);
@@ -163,13 +166,13 @@ export function ScrambledTitle({
   }, [phrases, holdMs]);
 
   return (
-    <h1 className={className}>
+    <Tag className={className}>
       <span className="sr-only">{label}</span>
       {/* Static first phrase for SSR / reduced motion; scrambler takes over. */}
       <span ref={elementRef} aria-hidden className="scramble-target">
         {phrases[0]}
       </span>
-    </h1>
+    </Tag>
   );
 }
 

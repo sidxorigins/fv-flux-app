@@ -5,7 +5,7 @@ import { ArrowRight, FileText, ScrollText, UsersRound } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { LetterRain } from "@/components/ui/raining-letters";
+import { LetterRain, ScrambledTitle } from "@/components/ui/raining-letters";
 
 /**
  * Public landing page — the only unauthenticated page besides the auth flows.
@@ -16,6 +16,13 @@ import { LetterRain } from "@/components/ui/raining-letters";
  * scramble-decoding headline. Everything animated is client-side garnish;
  * the copy, CTAs, features and footer are server-rendered.
  */
+
+const HERO_PHRASES = [
+  "Work in motion.",
+  "Plan the sprint.",
+  "Move the board.",
+  "Ship the work.",
+];
 
 const FEATURES = [
   {
@@ -69,6 +76,13 @@ export default async function Home() {
               .
             </span>
           </h1>
+
+          <ScrambledTitle
+            as="p"
+            phrases={HERO_PHRASES}
+            label="Work in motion."
+            className="min-h-[1.4em] text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
+          />
 
           <p className="max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
             Flux is where Foodverse teams plan projects, move tasks across the
