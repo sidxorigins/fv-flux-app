@@ -63,7 +63,7 @@ function buildInviteHtml({ inviteUrl, invitedByName }: SendInviteEmailParams): s
           <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background:#141414;border:1px solid #2a2a2a;border-radius:16px;overflow:hidden;">
             <tr>
               <td style="padding:32px 32px 8px 32px;">
-                <div style="font-size:22px;font-weight:700;color:#ff6b35;">Flux</div>
+                <div style="font-size:22px;font-weight:700;color:#f5f5f7;">Flux<span style="color:#ff6b35;">.</span></div>
                 <h1 style="font-size:20px;font-weight:600;margin:20px 0 8px 0;color:#f5f5f7;">You've been invited</h1>
                 <p style="font-size:15px;line-height:1.6;color:#9a9a9a;margin:0 0 24px 0;">
                   ${who} has invited you to join Flux, the Foodverse task &amp; project workspace.
