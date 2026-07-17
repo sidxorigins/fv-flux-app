@@ -28,6 +28,8 @@ export interface DashboardScope {
   userId: string;
   /** Ids of projects the user is a MEMBER of (memberships only — see header). */
   projectIds: string[];
+  /** Global Admin — used only to widen the project tiles to every project. */
+  isAdmin: boolean;
 }
 
 /** Resolve the session user + their member-project ids in one pass. */
@@ -37,7 +39,11 @@ export async function getDashboardScope(): Promise<DashboardScope> {
     where: { userId: user.id },
     select: { projectId: true },
   });
-  return { userId: user.id, projectIds: memberships.map((m) => m.projectId) };
+  return {
+    userId: user.id,
+    projectIds: memberships.map((m) => m.projectId),
+    isAdmin: user.globalRole === "ADMIN",
+  };
 }
 
 /** Where-fragment limiting tasks to the scope's member projects. */
@@ -364,30 +370,45 @@ export interface ProjectTile {
 }
 
 /**
- * Slim variant of getMyProjects for the bento tiles — memberships only (the
- * personal-scope rule above; getMyProjects would hand an Admin every project),
- * with the open-task count from a filtered `_count`, never task rows.
+ * Slim variant of getMyProjects for the bento tiles. For a global Admin this
+ * lists EVERY project (one-click access to any board from the landing page);
+ * for everyone else it's their memberships only. Open-task count comes from a
+ * filtered `_count`, never task rows. (Note: the rest of the dashboard — KPIs,
+ * charts, my work — stays personal-scope even for admins; only these shortcut
+ * tiles widen.)
  */
 export async function getProjectTiles(
   scope?: DashboardScope,
 ): Promise<ProjectTile[]> {
   const s = scope ?? (await getDashboardScope());
 
+  const tileSelect = {
+    id: true,
+    key: true,
+    name: true,
+    _count: { select: { tasks: { where: { status: { not: "DONE" as const } } } } },
+  };
+
+  if (s.isAdmin) {
+    const projects = await prisma.project.findMany({
+      orderBy: { createdAt: "desc" },
+      select: tileSelect,
+    });
+    return projects.map((project) => ({
+      id: project.id,
+      key: project.key,
+      name: project.name,
+      role: "MANAGER", // admin effective role (bypass policy, matches getMyProjects)
+      openTaskCount: project._count.tasks,
+    }));
+  }
+
   const memberships = await prisma.projectMembership.findMany({
     where: { userId: s.userId },
     orderBy: { project: { createdAt: "desc" } },
     select: {
       projectRole: true,
-      project: {
-        select: {
-          id: true,
-          key: true,
-          name: true,
-          _count: {
-            select: { tasks: { where: { status: { not: "DONE" } } } },
-          },
-        },
-      },
+      project: { select: tileSelect },
     },
   });
 
