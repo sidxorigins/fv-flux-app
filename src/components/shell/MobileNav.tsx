@@ -18,7 +18,7 @@ import { NavLinks } from "./NavLinks";
  * is hidden) opening a left sheet with the same NavLinks. Closes itself on
  * navigation so the destination page is immediately visible.
  */
-export function MobileNav() {
+export function MobileNav({ isAdmin = false }: { isAdmin?: boolean }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -52,7 +52,7 @@ export function MobileNav() {
             </span>
           </SheetTitle>
         </SheetHeader>
-        <NavLinks />
+        <NavLinks isAdmin={isAdmin} />
       </SheetContent>
     </Sheet>
   );

@@ -30,6 +30,7 @@ import {
   updateTaskSchema,
   updateTaskStatusSchema,
 } from "./schemas";
+import { searchEverything, type SearchResults } from "./queries";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -664,5 +665,24 @@ export async function deleteTask(
     if (mapped) return mapped;
     if (isNotFound(err)) return fail("Task not found.");
     return fail("Something went wrong. Please try again.");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// searchTasksAndProjects — command palette (⌘K)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Client-callable wrapper around `searchEverything` for the command palette.
+ * Returns empty results (never throws) so a transient failure just shows
+ * nothing rather than erroring the palette.
+ */
+export async function searchTasksAndProjects(
+  query: string,
+): Promise<SearchResults> {
+  try {
+    return await searchEverything(query);
+  } catch {
+    return { tasks: [], projects: [] };
   }
 }

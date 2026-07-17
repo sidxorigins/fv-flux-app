@@ -20,6 +20,7 @@ import {
   BacklogView,
   BoardView,
   CreateTaskDialog,
+  LabelManager,
   TaskDetailPanel,
   TaskFilters,
 } from "@/features/tasks/components"
@@ -217,6 +218,8 @@ export default async function ProjectPage({
       attachments={drawerData.attachments}
       activity={drawerData.activity}
       currentUserId={session.user.id}
+      members={members}
+      projectLabels={labels}
       canEdit={canEdit}
       canManage={canManage}
     />
@@ -256,6 +259,14 @@ export default async function ProjectPage({
               </span>
             ) : null}
           </div>
+          {canEdit ? (
+            <LabelManager
+              projectId={projectId}
+              labels={labels}
+              canEdit={canEdit}
+              canManage={canManage}
+            />
+          ) : null}
           <ProjectSettingsMenu
             project={{
               id: project.id,

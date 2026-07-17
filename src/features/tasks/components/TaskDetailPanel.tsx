@@ -19,7 +19,13 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { TaskPriority, TaskStatus } from "@/generated/prisma/client"
+import type {
+  Label as ProjectLabel,
+  TaskPriority,
+  TaskStatus,
+  TaskType,
+  User,
+} from "@/generated/prisma/client"
 
 import { AttachmentSection } from "@/features/attachments/components/AttachmentSection"
 import type { AttachmentWithUploader } from "@/features/attachments/types"
@@ -34,12 +40,18 @@ import { StatusBadge } from "./StatusBadge"
 import { TaskDrawer } from "./TaskDrawer"
 import { TypeIcon } from "./TypeIcon"
 
+type Member = Pick<User, "id" | "name" | "username" | "avatarKey">
+
 export interface TaskDetailPanelProps {
   task: TaskDetail
   comments: CommentWithAuthor[]
   attachments: AttachmentWithUploader[]
   activity: ActivityEntry[]
   currentUserId: string
+  /** Project members offered by the assignee editor. */
+  members: Member[]
+  /** All labels on the project, offered by the label editor. */
+  projectLabels: ProjectLabel[]
   /** MEMBER+ on this project — edit description/status/priority, add subtasks. */
   canEdit: boolean
   /** MANAGER+ (or global Admin) — manage others' comments/attachments, delete any task. */
@@ -59,6 +71,8 @@ export function TaskDetailPanel({
   attachments,
   activity,
   currentUserId,
+  members,
+  projectLabels,
   canEdit,
   canManage,
 }: TaskDetailPanelProps) {
@@ -106,6 +120,42 @@ export function TaskDetailPanel({
   function onPriorityChange(priority: TaskPriority) {
     startTransition(async () => {
       const res = await updateTask({ taskId: task.id, priority })
+      if (!res.ok) toast.error(res.error)
+      router.refresh()
+    })
+  }
+
+  function onTypeChange(type: TaskType) {
+    startTransition(async () => {
+      const res = await updateTask({ taskId: task.id, type })
+      if (!res.ok) toast.error(res.error)
+      router.refresh()
+    })
+  }
+
+  function onAssigneeChange(assigneeId: string | null) {
+    startTransition(async () => {
+      const res = await updateTask({ taskId: task.id, assigneeId })
+      if (!res.ok) toast.error(res.error)
+      router.refresh()
+    })
+  }
+
+  function onDueDateChange(date: string | null) {
+    startTransition(async () => {
+      const res = await updateTask({
+        taskId: task.id,
+        // A yyyy-mm-dd from <input type=date> is parsed at local midnight.
+        dueDate: date ? new Date(`${date}T00:00:00`) : null,
+      })
+      if (!res.ok) toast.error(res.error)
+      router.refresh()
+    })
+  }
+
+  function onLabelsChange(labelIds: string[]) {
+    startTransition(async () => {
+      const res = await updateTask({ taskId: task.id, labelIds })
       if (!res.ok) toast.error(res.error)
       router.refresh()
     })
@@ -343,8 +393,14 @@ export function TaskDetailPanel({
       activity={
         activity.length > 0 ? <ActivityList entries={activity} /> : undefined
       }
+      members={members}
+      projectLabels={projectLabels}
       onStatusChange={canEdit ? onStatusChange : undefined}
       onPriorityChange={canEdit ? onPriorityChange : undefined}
+      onTypeChange={canEdit ? onTypeChange : undefined}
+      onAssigneeChange={canEdit ? onAssigneeChange : undefined}
+      onDueDateChange={canEdit ? onDueDateChange : undefined}
+      onLabelsChange={canEdit ? onLabelsChange : undefined}
     />
   )
 }

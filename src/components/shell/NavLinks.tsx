@@ -18,24 +18,27 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-const NAV_ITEMS: NavItem[] = [
+const BASE_NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/tasks", label: "My Tasks", icon: ListTodo },
-  // TODO: render only for globalRole === "ADMIN" once auth/permissions land.
-  { href: "/admin", label: "Admin", icon: Shield },
 ];
+
+const ADMIN_NAV_ITEM: NavItem = { href: "/admin", label: "Admin", icon: Shield };
 
 /**
  * Primary navigation — the only client piece of the sidebar (active state
- * needs the pathname). Micro-interactions are CSS transitions only.
+ * needs the pathname). The Admin link shows only for global Admins (the route
+ * is server-protected regardless — this just hides a link nobody else can use).
+ * Micro-interactions are CSS transitions only.
  */
-export function NavLinks() {
+export function NavLinks({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
+  const items = isAdmin ? [...BASE_NAV_ITEMS, ADMIN_NAV_ITEM] : BASE_NAV_ITEMS;
 
   return (
     <nav aria-label="Primary" className="flex flex-col gap-1">
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, icon: Icon }) => {
         const active = pathname === href || pathname.startsWith(`${href}/`);
 
         return (

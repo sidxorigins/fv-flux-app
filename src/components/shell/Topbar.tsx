@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { LogOut, Search, UserRound } from "lucide-react";
+import { LogOut, UserRound } from "lucide-react";
 
-import { signOut } from "@/lib/auth";
+import { auth, signOut } from "@/lib/auth";
 import { getMyProfile } from "@/features/users/queries";
+import { CommandPalette } from "./CommandPalette";
 import { MobileNav } from "./MobileNav";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,28 +42,17 @@ async function signOutAction() {
 
 /** Glass topbar (server component). */
 export async function Topbar({ children }: TopbarProps) {
-  const profile = await getMyProfile();
+  const [profile, session] = await Promise.all([getMyProfile(), auth()]);
+  const isAdmin = session?.user?.globalRole === "ADMIN";
 
   return (
     <header className="sticky top-0 z-40 px-4 pt-3 sm:px-6 lg:px-8">
       <div className="glass flex h-14 items-center justify-between gap-4 px-3 sm:px-4">
-        <MobileNav />
+        <MobileNav isAdmin={isAdmin} />
         <div className="min-w-0 flex-1">{children}</div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {/* TODO: wire up a real command palette (Cmd+K) — non-functional affordance for now. */}
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="Search"
-            className="gap-2 text-muted-foreground hover:text-foreground"
-          >
-            <Search aria-hidden />
-            <span className="hidden sm:inline">Search</span>
-            <kbd className="hidden rounded-sm border border-border bg-surface-raised px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground sm:inline-block">
-              ⌘K
-            </kbd>
-          </Button>
+          <CommandPalette />
 
           <DropdownMenu>
             <DropdownMenuTrigger

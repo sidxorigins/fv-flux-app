@@ -1,3 +1,4 @@
+import { auth } from "@/lib/auth";
 import { NavLinks } from "./NavLinks";
 
 /**
@@ -6,7 +7,10 @@ import { NavLinks } from "./NavLinks";
  */
 // Below lg the sidebar is hidden and MobileNav (hamburger + sheet in the
 // topbar) takes over navigation.
-export function Sidebar() {
+export async function Sidebar() {
+  const session = await auth();
+  const isAdmin = session?.user?.globalRole === "ADMIN";
+
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 p-3 pr-0 lg:block">
       <div className="glass flex h-full flex-col p-3">
@@ -19,7 +23,7 @@ export function Sidebar() {
             </span>
           </span>
         </div>
-        <NavLinks />
+        <NavLinks isAdmin={isAdmin} />
       </div>
     </aside>
   );

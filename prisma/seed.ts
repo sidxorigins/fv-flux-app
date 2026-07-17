@@ -275,10 +275,22 @@ async function main() {
     tasksByKey.set(spec.key, task);
   }
 
-  // Keep the per-project key counter ahead of the seeded tasks.
+  // Keep the per-project key counter ahead of every existing task key. Never
+  // move it backwards: on a re-seed of a DB that already has tasks beyond the
+  // seed set (e.g. after manual/e2e task creation), resetting to the seed count
+  // would mint a colliding key on the next create. Take the max of the seed
+  // count and the highest existing key number.
+  const existingKeys = await prisma.task.findMany({
+    where: { projectId: project.id },
+    select: { key: true },
+  });
+  const highestKeyNumber = existingKeys.reduce((max, { key }) => {
+    const n = Number(key.split("-")[1]);
+    return Number.isFinite(n) && n > max ? n : max;
+  }, 0);
   await prisma.project.update({
     where: { id: project.id },
-    data: { taskCounter: TASK_SPECS.length },
+    data: { taskCounter: Math.max(TASK_SPECS.length, highestKeyNumber) },
   });
 
   // ── One comment ──────────────────────────────────────────────────────────

@@ -239,3 +239,75 @@ export async function getProjectLabels(projectId: string): Promise<Label[]> {
     orderBy: { name: "asc" },
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Global search (⌘K command palette)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SearchResults {
+  tasks: {
+    id: string;
+    key: string;
+    title: string;
+    type: TaskType;
+    status: TaskStatus;
+    projectId: string;
+  }[];
+  projects: { id: string; key: string; name: string }[];
+}
+
+/**
+ * Cross-project search for the command palette. Permission-scoped: non-admins
+ * only match tasks/projects they have a membership in; admins see everything.
+ * Matches task key (exact-ish, case-insensitive) or title, and project key/name.
+ */
+export async function searchEverything(rawQuery: string): Promise<SearchResults> {
+  const user = await requireUser();
+  const q = rawQuery.trim();
+  if (q.length === 0) return { tasks: [], projects: [] };
+
+  const memberOnly =
+    user.globalRole === "ADMIN"
+      ? {}
+      : { project: { memberships: { some: { userId: user.id } } } };
+  const projectScope =
+    user.globalRole === "ADMIN"
+      ? {}
+      : { memberships: { some: { userId: user.id } } };
+
+  const [tasks, projects] = await Promise.all([
+    prisma.task.findMany({
+      where: {
+        ...memberOnly,
+        OR: [
+          { key: { contains: q, mode: "insensitive" } },
+          { title: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      select: {
+        id: true,
+        key: true,
+        title: true,
+        type: true,
+        status: true,
+        projectId: true,
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 8,
+    }),
+    prisma.project.findMany({
+      where: {
+        ...projectScope,
+        OR: [
+          { key: { contains: q, mode: "insensitive" } },
+          { name: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, key: true, name: true },
+      orderBy: { name: "asc" },
+      take: 5,
+    }),
+  ]);
+
+  return { tasks, projects };
+}
