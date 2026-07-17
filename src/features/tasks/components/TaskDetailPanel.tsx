@@ -129,6 +129,14 @@ export function TaskDetailPanel({
     })
   }
 
+  function onTitleChange(title: string) {
+    startTransition(async () => {
+      const res = await updateTask({ taskId: task.id, title })
+      if (!res.ok) toast.error(res.error)
+      router.refresh()
+    })
+  }
+
   function onTypeChange(type: TaskType) {
     startTransition(async () => {
       const res = await updateTask({ taskId: task.id, type })
@@ -407,6 +415,7 @@ export function TaskDetailPanel({
       projectLabels={projectLabels}
       onStatusChange={canEdit ? onStatusChange : undefined}
       onPriorityChange={canEdit ? onPriorityChange : undefined}
+      onTitleChange={canEdit ? onTitleChange : undefined}
       onTypeChange={canEdit ? onTypeChange : undefined}
       onAssigneeChange={canEdit ? onAssigneeChange : undefined}
       onDueDateChange={canEdit ? onDueDateChange : undefined}

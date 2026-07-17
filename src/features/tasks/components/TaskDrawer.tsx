@@ -83,6 +83,87 @@ export type TaskDrawerProps = {
   onDueDateChange?: (date: string | null) => void
   /** When provided, labels become editable. */
   onLabelsChange?: (labelIds: string[]) => void
+  /** When provided, the title becomes inline-editable. */
+  onTitleChange?: (title: string) => void
+}
+
+/**
+ * Inline-editable task title. Click to edit (when `onSave` is provided);
+ * Enter or blur commits a changed, non-empty title, Escape cancels. Falls back
+ * to a static heading for read-only viewers.
+ */
+function EditableTitle({
+  title,
+  onSave,
+}: {
+  title: string
+  onSave?: (next: string) => void
+}) {
+  const [editing, setEditing] = React.useState(false)
+  const [draft, setDraft] = React.useState(title)
+
+  // Resync when the title prop changes underneath us (after our own save, or an
+  // external rename) — render-phase adjustment per react.dev "You Might Not Need
+  // an Effect", so no effect-driven re-render cascade.
+  const [syncedTitle, setSyncedTitle] = React.useState(title)
+  if (syncedTitle !== title) {
+    setSyncedTitle(title)
+    setDraft(title)
+    setEditing(false)
+  }
+
+  function commit() {
+    const next = draft.trim()
+    if (next && next !== title) onSave?.(next)
+    else setDraft(title)
+    setEditing(false)
+  }
+
+  if (!onSave) {
+    return (
+      <SheetTitle className="text-lg leading-snug font-semibold text-foreground">
+        {title}
+      </SheetTitle>
+    )
+  }
+
+  return (
+    <SheetTitle
+      render={
+        <div className="text-lg leading-snug font-semibold text-foreground" />
+      }
+    >
+      {editing ? (
+        <Input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              commit()
+            } else if (e.key === "Escape") {
+              e.preventDefault()
+              setDraft(title)
+              setEditing(false)
+            }
+          }}
+          aria-label="Task title"
+          className="h-auto py-1 text-lg leading-snug font-semibold"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="-mx-1 w-full rounded-md px-1 py-0.5 text-left outline-none hover:bg-surface-raised focus-visible:ring-2 focus-visible:ring-ring/50"
+          title="Click to edit title"
+        >
+          {title}
+        </button>
+      )}
+    </SheetTitle>
+  )
 }
 
 function DrawerSection({
@@ -137,6 +218,7 @@ export function TaskDrawer({
   onAssigneeChange,
   onDueDateChange,
   onLabelsChange,
+  onTitleChange,
 }: TaskDrawerProps) {
   // Resolved on the client only so SSR and first client paint agree (the
   // overdue tint only ever upgrades after hydration).
@@ -218,9 +300,7 @@ export function TaskDrawer({
                     </SheetClose>
                   </div>
                 </div>
-                <SheetTitle className="text-lg leading-snug font-semibold text-foreground">
-                  {task.title}
-                </SheetTitle>
+                <EditableTitle title={task.title} onSave={onTitleChange} />
 
                 {/* Meta row */}
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">

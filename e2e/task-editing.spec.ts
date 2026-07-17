@@ -33,6 +33,41 @@ test.describe("editing a task from the drawer", () => {
       page.getByRole("button", { name: /assignee/i }),
     ).toContainText("Flux Admin");
   });
+
+  test("renames a task from the drawer title", async ({ page }) => {
+    const original = "Wire up R2 presigned uploads";
+    await openProject(page);
+    await page.getByText(original).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    // Click the title to edit, type a new one, commit with Enter.
+    await dialog.getByRole("button", { name: original }).click();
+    const input = dialog.getByLabel("Task title");
+    const renamed = `Renamed ${Date.now()}`;
+    await input.fill(renamed);
+    await input.press("Enter");
+
+    // The title heading (a button) now shows the new title, surviving a reload.
+    // (Scope to the button — the activity log also echoes the new title.)
+    await expect(
+      dialog.getByRole("button", { name: renamed }),
+    ).toBeVisible();
+    await page.reload();
+    const reopened = page.getByRole("dialog");
+    await expect(
+      reopened.getByRole("button", { name: renamed }),
+    ).toBeVisible();
+
+    // Restore the seed title so the test is idempotent against the shared DB.
+    await reopened.getByRole("button", { name: renamed }).click();
+    const input2 = reopened.getByLabel("Task title");
+    await input2.fill(original);
+    await input2.press("Enter");
+    await expect(
+      reopened.getByRole("button", { name: original }),
+    ).toBeVisible();
+  });
 });
 
 test.describe("label management", () => {
