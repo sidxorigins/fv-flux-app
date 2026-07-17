@@ -21,6 +21,9 @@ function isPublicPath(pathname: string): boolean {
   // Landing page — exact match only; everything under / stays guarded.
   if (pathname === "/") return true;
   if (pathname.startsWith("/api/auth")) return true;
+  // Cron webhooks authenticate themselves with CRON_SECRET inside the route
+  // handler — they must bypass the session gate (there's no user session).
+  if (pathname.startsWith("/api/cron")) return true;
   return PUBLIC_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );

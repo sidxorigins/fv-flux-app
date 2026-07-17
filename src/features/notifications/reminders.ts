@@ -53,6 +53,7 @@ export async function getDueReminderDigests(
       assignee: { status: "ACTIVE" },
     },
     select: {
+      id: true,
       key: true,
       title: true,
       projectId: true,
@@ -75,6 +76,7 @@ export async function getDueReminderDigests(
       dueSoon: [],
     };
     digest[bucket].push({
+      id: task.id,
       key: task.key,
       title: task.title,
       projectId: task.projectId,

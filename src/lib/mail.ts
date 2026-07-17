@@ -337,6 +337,7 @@ export async function sendMentionEmail(
 }
 
 export interface DueReminderTaskInfo {
+  id: string;
   key: string;
   title: string;
   projectId: string;
@@ -362,16 +363,22 @@ function formatDueDate(date: Date): string {
 function renderDueReminderRows(
   tasks: DueReminderTaskInfo[],
   accent: string,
+  appUrl: string,
 ): string {
   return tasks
     .map((task) => {
       const key = escapeHtml(task.key);
       const title = escapeHtml(task.title);
       const due = escapeHtml(formatDueDate(task.dueDate));
+      const href = escapeHtml(
+        `${appUrl}/projects/${task.projectId}?task=${task.id}`,
+      );
       return `<tr>
-                    <td style="padding:10px 16px;border-bottom:1px solid #2a2a2a;">
-                      <div style="font-family:Menlo,Consolas,monospace;font-size:11px;color:${accent};margin-bottom:2px;">${key}</div>
-                      <div style="font-size:14px;color:#f5f5f7;">${title}</div>
+                    <td style="padding:0;border-bottom:1px solid #2a2a2a;">
+                      <a href="${href}" style="display:block;padding:10px 16px;text-decoration:none;">
+                        <div style="font-family:Menlo,Consolas,monospace;font-size:11px;color:${accent};margin-bottom:2px;">${key}</div>
+                        <div style="font-size:14px;color:#f5f5f7;">${title}</div>
+                      </a>
                     </td>
                     <td style="padding:10px 16px;border-bottom:1px solid #2a2a2a;text-align:right;white-space:nowrap;">
                       <span style="font-size:12px;color:#9a9a9a;">${due}</span>
@@ -390,7 +397,7 @@ function buildDueReminderHtml(params: SendDueReminderEmailParams): string {
               <td style="padding:20px 32px 4px 32px;">
                 <div style="font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#f5455c;margin-bottom:8px;">Overdue (${params.overdue.length})</div>
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#1f1f1f;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;">
-                  ${renderDueReminderRows(params.overdue, "#f5455c")}
+                  ${renderDueReminderRows(params.overdue, "#f5455c", params.appUrl)}
                 </table>
               </td>
             </tr>`
@@ -401,7 +408,7 @@ function buildDueReminderHtml(params: SendDueReminderEmailParams): string {
               <td style="padding:20px 32px 4px 32px;">
                 <div style="font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#f5a623;margin-bottom:8px;">Due within 24h (${params.dueSoon.length})</div>
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#1f1f1f;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;">
-                  ${renderDueReminderRows(params.dueSoon, "#f5a623")}
+                  ${renderDueReminderRows(params.dueSoon, "#f5a623", params.appUrl)}
                 </table>
               </td>
             </tr>`
