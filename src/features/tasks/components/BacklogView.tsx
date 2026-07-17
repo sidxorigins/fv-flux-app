@@ -499,33 +499,9 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
         />
       ) : null}
 
-      {/* Stacked cards below `sm` — the table below cramps on phones. */}
-      <div className="flex flex-col gap-2 sm:hidden">
-        {canEdit ? (
-          <label className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-            <Checkbox
-              checked={allSelected}
-              indeterminate={someSelected}
-              onCheckedChange={toggleAll}
-              aria-label="Select all tasks"
-            />
-            Select all
-          </label>
-        ) : null}
-        {tasks.map((task) => (
-          <TaskRowCard
-            key={task.id}
-            task={task}
-            now={now}
-            canEdit={canEdit}
-            selected={selected.has(task.id)}
-            onToggleSelect={() => toggleOne(task.id)}
-            onOpen={() => openTask(task.id)}
-          />
-        ))}
-      </div>
-
-      {/* Table — `sm` and up; the cards above stand in for it on phones. */}
+      {/* Table — `sm` and up; the stacked cards below stand in on phones.
+          The table renders FIRST in the DOM so a generic getByText/first()
+          resolves to the visible desktop row, not a hidden mobile card. */}
       <div className="hidden overflow-hidden rounded-xl border border-border sm:block">
       <Table>
         <TableHeader>
@@ -741,6 +717,32 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
           })}
         </TableBody>
       </Table>
+      </div>
+
+      {/* Stacked cards below `sm` — the table above cramps on phones. */}
+      <div className="flex flex-col gap-2 sm:hidden">
+        {canEdit ? (
+          <label className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+            <Checkbox
+              checked={allSelected}
+              indeterminate={someSelected}
+              onCheckedChange={toggleAll}
+              aria-label="Select all tasks"
+            />
+            Select all
+          </label>
+        ) : null}
+        {tasks.map((task) => (
+          <TaskRowCard
+            key={task.id}
+            task={task}
+            now={now}
+            canEdit={canEdit}
+            selected={selected.has(task.id)}
+            onToggleSelect={() => toggleOne(task.id)}
+            onOpen={() => openTask(task.id)}
+          />
+        ))}
       </div>
 
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>

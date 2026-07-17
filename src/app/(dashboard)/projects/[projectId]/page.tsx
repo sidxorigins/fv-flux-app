@@ -124,20 +124,39 @@ export default async function ProjectPage({
     if (v) currentParams.set(key, v)
   }
 
+  // The filter subset both views share (board narrows its columns; backlog
+  // adds sort + pagination on top).
+  const filterSet = {
+    status: isTaskStatus(sp.status) ? sp.status : undefined,
+    type: isTaskType(sp.type) ? sp.type : undefined,
+    priority: isTaskPriority(sp.priority) ? sp.priority : undefined,
+    assigneeId: asString(sp.assigneeId),
+    labelId: asString(sp.labelId),
+    q: asString(sp.q),
+  }
+
   let viewContent: React.ReactNode
   if (view === "board") {
-    const boardTasks = await getBoardTasks(projectId)
+    const [boardTasks, savedViews] = await Promise.all([
+      getBoardTasks(projectId, filterSet),
+      getSavedViews(projectId),
+    ])
     viewContent = (
-      <BoardView tasks={boardTasks} disabled={!canEdit} />
+      <div className="flex h-full min-h-0 flex-col gap-4">
+        <TaskFilters
+          members={members}
+          labels={labels}
+          projectId={projectId}
+          savedViews={savedViews}
+        />
+        <div className="min-h-0 flex-1">
+          <BoardView tasks={boardTasks} disabled={!canEdit} />
+        </div>
+      </div>
     )
   } else {
     const filters: BacklogFilters = {
-      status: isTaskStatus(sp.status) ? sp.status : undefined,
-      type: isTaskType(sp.type) ? sp.type : undefined,
-      priority: isTaskPriority(sp.priority) ? sp.priority : undefined,
-      assigneeId: asString(sp.assigneeId),
-      labelId: asString(sp.labelId),
-      q: asString(sp.q),
+      ...filterSet,
       sort: isSortField(sp.sort) ? sp.sort : undefined,
       dir: isSortDir(sp.dir) ? sp.dir : undefined,
       cursor: asString(sp.cursor),

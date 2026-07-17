@@ -156,21 +156,8 @@ export function MyTasksTable({ groups }: { groups: MyTasksGroup[] }) {
             </h2>
           </div>
 
-          {/* Stacked cards below `sm` — the table below cramps on phones. */}
-          <div className="flex flex-col gap-2 sm:hidden">
-            {tasks.map((task) => (
-              <MyTaskCard
-                key={task.id}
-                task={task}
-                now={now}
-                onOpen={() =>
-                  router.push(`/projects/${project.id}?task=${task.id}`)
-                }
-              />
-            ))}
-          </div>
-
-          {/* Table — `sm` and up; the cards above stand in for it on phones. */}
+          {/* Table — `sm` and up; the cards below stand in on phones. Table
+              first in the DOM so getByText/first() hits the visible row. */}
           <div className="hidden overflow-hidden rounded-xl border border-border sm:block">
             <Table>
               <TableHeader>
@@ -308,6 +295,20 @@ export function MyTasksTable({ groups }: { groups: MyTasksGroup[] }) {
                 })}
               </TableBody>
             </Table>
+          </div>
+
+          {/* Stacked cards below `sm` — the table above cramps on phones. */}
+          <div className="flex flex-col gap-2 sm:hidden">
+            {tasks.map((task) => (
+              <MyTaskCard
+                key={task.id}
+                task={task}
+                now={now}
+                onOpen={() =>
+                  router.push(`/projects/${project.id}?task=${task.id}`)
+                }
+              />
+            ))}
           </div>
         </div>
       ))}

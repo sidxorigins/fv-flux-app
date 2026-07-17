@@ -46,12 +46,51 @@ function toBoardTask(row: BoardTaskRow): BoardTask {
 // Board
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Top-level cards for a project's board, ordered by board position. */
-export async function getBoardTasks(projectId: string): Promise<BoardTask[]> {
+/** The filter subset shared by the board and the backlog (no sort/pagination). */
+export interface TaskFilterSet {
+  status?: TaskStatus;
+  type?: TaskType;
+  priority?: TaskPriority;
+  assigneeId?: string;
+  labelId?: string;
+  /** Free-text: case-insensitive title contains OR exact task-key match. */
+  q?: string;
+}
+
+/** Build the shared `where` for top-level project tasks + the common filters. */
+function taskFilterWhere(
+  projectId: string,
+  filters: TaskFilterSet,
+): Prisma.TaskWhereInput {
+  const where: Prisma.TaskWhereInput = { projectId, parentId: null };
+  if (filters.status) where.status = filters.status;
+  if (filters.type) where.type = filters.type;
+  if (filters.priority) where.priority = filters.priority;
+  if (filters.assigneeId) where.assigneeId = filters.assigneeId;
+  if (filters.labelId) where.labels = { some: { id: filters.labelId } };
+  if (filters.q?.trim()) {
+    const q = filters.q.trim();
+    where.OR = [
+      { title: { contains: q, mode: "insensitive" } },
+      { key: { equals: q, mode: "insensitive" } },
+    ];
+  }
+  return where;
+}
+
+/**
+ * Top-level cards for a project's board, ordered by board position. Accepts the
+ * same filter set as the backlog so the board's filter bar narrows the columns
+ * (status stays the column axis, but filtering by it is still honoured).
+ */
+export async function getBoardTasks(
+  projectId: string,
+  filters: TaskFilterSet = {},
+): Promise<BoardTask[]> {
   await canViewProject(projectId); // throws if not permitted
 
   const rows = await prisma.task.findMany({
-    where: { projectId, parentId: null },
+    where: taskFilterWhere(projectId, filters),
     include: boardTaskInclude,
     orderBy: { position: "asc" },
   });
@@ -122,19 +161,7 @@ export async function getBacklogTasks(
 ): Promise<BacklogPage> {
   await canViewProject(projectId);
 
-  const where: Prisma.TaskWhereInput = { projectId, parentId: null };
-  if (filters.status) where.status = filters.status;
-  if (filters.type) where.type = filters.type;
-  if (filters.priority) where.priority = filters.priority;
-  if (filters.assigneeId) where.assigneeId = filters.assigneeId;
-  if (filters.labelId) where.labels = { some: { id: filters.labelId } };
-  if (filters.q?.trim()) {
-    const q = filters.q.trim();
-    where.OR = [
-      { title: { contains: q, mode: "insensitive" } },
-      { key: { equals: q, mode: "insensitive" } },
-    ];
-  }
+  const where = taskFilterWhere(projectId, filters);
 
   // No `sort` param → the original, unchanged default ordering: newest first.
   // `filters.sort` is whitelisted at the boundary (see page.tsx's `isSortField`),

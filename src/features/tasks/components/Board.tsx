@@ -88,6 +88,11 @@ export function Board({
     buildColumns(tasks)
   )
   const [activeTask, setActiveTask] = React.useState<BoardTask | null>(null)
+  // Below md the four columns don't fit side by side, so we show one at a time
+  // behind a status switcher (drag reorders within a column; cross-column moves
+  // are done from the task drawer's status dropdown on small screens).
+  const [mobileStatus, setMobileStatus] =
+    React.useState<TaskStatus>(STATUS_ORDER[0])
   const reducedMotion = usePrefersReducedMotion()
   const clientNow = useClientNow(now)
 
@@ -268,19 +273,55 @@ export function Board({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className={cn("flex h-full min-h-0 gap-3 overflow-x-auto", className)}>
-        {STATUS_ORDER.map((status) => (
-          <BoardColumn
-            key={status}
-            status={status}
-            tasks={columns[status]}
-            disabled={disabled}
-            onTaskClick={onTaskClick}
-            onQuickAdd={onQuickAdd}
-            now={clientNow}
-            reducedMotion={reducedMotion}
-          />
-        ))}
+      <div className={cn("flex h-full min-h-0 flex-col", className)}>
+        {/* Mobile status switcher — one column at a time below md. */}
+        <div
+          className="mb-3 flex shrink-0 gap-1 md:hidden"
+          role="tablist"
+          aria-label="Board column"
+        >
+          {STATUS_ORDER.map((status) => {
+            const meta = STATUS_META[status]
+            const active = status === mobileStatus
+            return (
+              <button
+                key={status}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setMobileStatus(status)}
+                className={cn(
+                  "flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors duration-150 motion-reduce:transition-none",
+                  active
+                    ? "border-border bg-surface-raised text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span
+                  className={cn("size-1.5 rounded-full", meta.dotClass)}
+                  aria-hidden
+                />
+                <span className="tabular-nums">{columns[status].length}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="flex min-h-0 flex-1 gap-3 md:overflow-x-auto">
+          {STATUS_ORDER.map((status) => (
+            <BoardColumn
+              key={status}
+              status={status}
+              tasks={columns[status]}
+              disabled={disabled}
+              onTaskClick={onTaskClick}
+              onQuickAdd={onQuickAdd}
+              now={clientNow}
+              reducedMotion={reducedMotion}
+              mobileHidden={status !== mobileStatus}
+            />
+          ))}
+        </div>
       </div>
       {/* Lifted copy of the dragged card — transform/opacity only. */}
       <DragOverlay dropAnimation={reducedMotion ? null : undefined}>
@@ -300,6 +341,7 @@ function BoardColumn({
   onQuickAdd,
   now,
   reducedMotion,
+  mobileHidden,
 }: {
   status: TaskStatus
   tasks: BoardTask[]
@@ -308,6 +350,8 @@ function BoardColumn({
   onQuickAdd?: (status: TaskStatus, title: string) => Promise<boolean>
   now: Date | null
   reducedMotion: boolean
+  /** Below md only the active column shows; the rest are hidden. */
+  mobileHidden: boolean
 }) {
   // Columns are droppable themselves so empty columns accept drops.
   const { setNodeRef, isOver } = useDroppable({ id: status, disabled })
@@ -316,7 +360,10 @@ function BoardColumn({
   return (
     <section
       aria-label={`${meta.label}: ${tasks.length} ${tasks.length === 1 ? "task" : "tasks"}`}
-      className="flex h-full min-h-0 w-72 shrink-0 flex-col rounded-xl border border-border bg-surface lg:w-auto lg:min-w-0 lg:flex-1"
+      className={cn(
+        "flex h-full min-h-0 w-full shrink-0 flex-col rounded-xl border border-border bg-surface md:w-72 lg:w-auto lg:min-w-0 lg:flex-1",
+        mobileHidden && "hidden md:flex"
+      )}
     >
       <header className="flex items-center gap-2 px-3 pt-3 pb-2">
         <span
