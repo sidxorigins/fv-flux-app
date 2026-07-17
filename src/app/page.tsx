@@ -5,6 +5,7 @@ import { ArrowRight, FileText, ScrollText, UsersRound } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { BreathingText } from "@/components/landing/BreathingText";
 
 /**
  * Public landing page — the only unauthenticated page besides the auth flows.
@@ -139,8 +140,8 @@ export default async function Home() {
             <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
               Internal · Invite-only
             </p>
-            <h1 className="text-8xl leading-none font-bold tracking-tight text-foreground sm:text-9xl">
-              Flux
+            <h1 className="text-8xl leading-none tracking-tight text-foreground sm:text-9xl">
+              <BreathingText text="Flux" />
               <span aria-hidden className="text-primary">
                 .
               </span>
