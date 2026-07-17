@@ -18,6 +18,8 @@ import { getToken } from "next-auth/jwt";
 const PUBLIC_PREFIXES = ["/login", "/register", "/set-password"];
 
 function isPublicPath(pathname: string): boolean {
+  // Landing page — exact match only; everything under / stays guarded.
+  if (pathname === "/") return true;
   if (pathname.startsWith("/api/auth")) return true;
   return PUBLIC_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
@@ -57,8 +59,10 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 
 export const config = {
   // Run on everything except Auth.js routes, Next internals, and static assets.
+  // The trailing `.*\\..*` alternative skips any path containing a dot — i.e.
+  // files served from /public (logos, images); app routes never contain dots.
   // Note: server actions POST to their own page route, so those stay covered.
   matcher: [
-    "/((?!api/auth|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)",
+    "/((?!api/auth|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)",
   ],
 };

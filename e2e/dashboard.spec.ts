@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("dashboard", () => {
+  test("signed-in users are redirected from the landing page", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/dashboard/);
+  });
+
   test.beforeEach(async ({ page }) => {
     await page.goto("/dashboard");
   });

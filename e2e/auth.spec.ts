@@ -11,8 +11,17 @@ test.describe("authentication", () => {
     await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   });
 
-  test("the root path also bounces to /login", async ({ page }) => {
+  test("the root path shows the public landing page", async ({ page }) => {
     await page.goto("/");
+    await expect(page).toHaveURL(/\/$/);
+    await expect(
+      page.getByRole("heading", { name: /Work in motion/ }),
+    ).toBeVisible();
+    await expect(page.getByRole("img", { name: /Foodverse/ })).toBeVisible();
+
+    // Sign in CTA leads to the login form (Base UI renders the link with
+    // role="button" when Button wraps a Link).
+    await page.getByRole("button", { name: "Sign in" }).first().click();
     await expect(page).toHaveURL(/\/login/);
   });
 
