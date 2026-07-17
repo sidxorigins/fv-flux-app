@@ -223,6 +223,28 @@ async function main() {
     create: { projectId: project.id, userId: admin.id, projectRole: ProjectRole.MANAGER },
   });
 
+  // ── A second active member ───────────────────────────────────────────────
+  // So the project isn't a party of one: gives the assignee picker and the
+  // @-mention autocomplete someone to choose. No password (SSO/invite-style
+  // account); status ACTIVE so they can be assigned and mentioned.
+  const member = await prisma.user.upsert({
+    where: { email: "sam@iccadubai.ae" },
+    update: { status: UserStatus.ACTIVE },
+    create: {
+      email: "sam@iccadubai.ae",
+      username: "sam",
+      name: "Sam Rivera",
+      globalRole: GlobalRole.USER,
+      status: UserStatus.ACTIVE,
+      bio: "Operations.",
+    },
+  });
+  await prisma.projectMembership.upsert({
+    where: { projectId_userId: { projectId: project.id, userId: member.id } },
+    update: { projectRole: ProjectRole.MEMBER },
+    create: { projectId: project.id, userId: member.id, projectRole: ProjectRole.MEMBER },
+  });
+
   // ── Labels ───────────────────────────────────────────────────────────────
   const labelsByName = new Map<string, { id: string }>();
   for (const l of LABELS) {

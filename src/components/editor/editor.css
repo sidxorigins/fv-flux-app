@@ -167,3 +167,14 @@
 .flux-prose[contenteditable="true"] :first-child {
   margin-top: 0;
 }
+
+/* @-mention chips (comment editor + rendered comments). Non-token colours are
+   avoided elsewhere, but these map to the design tokens exposed as CSS vars. */
+.flux-prose .mention {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 500;
+  white-space: nowrap;
+}

@@ -20,10 +20,19 @@
  *   and becomes available after the client effect runs).
  */
 
-import { useCallback, useEffect, type CSSProperties } from "react";
-import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
+import { useCallback, useEffect, useMemo, type CSSProperties } from "react";
+import {
+  EditorContent,
+  ReactRenderer,
+  useEditor,
+  useEditorState,
+} from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extension-placeholder";
+import Mention from "@tiptap/extension-mention";
+import type { Extensions } from "@tiptap/core";
+
+import { MentionList, type MentionItem, type MentionListRef } from "./MentionList";
 import {
   Bold,
   Code,
@@ -62,6 +71,79 @@ interface RichTextEditorProps {
   minHeight?: string;
   autofocus?: boolean;
   className?: string;
+  /**
+   * When provided, typing `@` opens an autocomplete of these users. Selecting
+   * one inserts `@username`, which the server parses to notify the mentionee.
+   * Only passed to the comment editor (task descriptions don't mention).
+   */
+  mentionItems?: MentionItem[];
+}
+
+/**
+ * A floating suggestion popup positioned at the caret. No tippy dependency —
+ * a fixed-position container appended to <body>, moved via the plugin's
+ * clientRect, torn down on exit.
+ */
+function createMentionExtension(items: MentionItem[]): Extensions[number] {
+  return Mention.configure({
+    HTMLAttributes: { class: "mention" },
+    // The node's `id` is the username → rendered text is `@username`.
+    renderText: ({ node }) => `@${node.attrs.label ?? node.attrs.id}`,
+    suggestion: {
+      char: "@",
+      items: ({ query }) => {
+        const q = query.toLowerCase();
+        return items
+          .filter(
+            (i) =>
+              i.id.toLowerCase().includes(q) ||
+              i.name.toLowerCase().includes(q),
+          )
+          .slice(0, 6);
+      },
+      render: () => {
+        let component: ReactRenderer<MentionListRef> | null = null;
+        let container: HTMLDivElement | null = null;
+
+        function position(clientRect: (() => DOMRect | null) | null | undefined) {
+          if (!container || !clientRect) return;
+          const rect = clientRect();
+          if (!rect) return;
+          container.style.left = `${rect.left}px`;
+          container.style.top = `${rect.bottom + 6}px`;
+        }
+
+        return {
+          onStart: (props) => {
+            component = new ReactRenderer(MentionList, {
+              props,
+              editor: props.editor,
+            });
+            container = document.createElement("div");
+            container.style.position = "fixed";
+            container.style.zIndex = "60";
+            container.appendChild(component.element);
+            document.body.appendChild(container);
+            position(props.clientRect);
+          },
+          onUpdate: (props) => {
+            component?.updateProps(props);
+            position(props.clientRect);
+          },
+          onKeyDown: (props) => {
+            if (props.event.key === "Escape") return true;
+            return component?.ref?.onKeyDown(props) ?? false;
+          },
+          onExit: () => {
+            container?.remove();
+            component?.destroy();
+            container = null;
+            component = null;
+          },
+        };
+      },
+    },
+  });
 }
 
 interface ToolbarButtonConfig {
@@ -112,12 +194,13 @@ export function RichTextEditor({
   minHeight = "120px",
   autofocus = false,
   className,
+  mentionItems,
 }: RichTextEditorProps) {
-  const editor = useEditor({
-    immediatelyRender: false,
-    editable,
-    autofocus: autofocus ? "end" : false,
-    extensions: [
+  // Build the extension list once; the mention extension closes over the item
+  // list (stable per editor instance — the comment editor's members don't
+  // change while it's open).
+  const extensions = useMemo<Extensions>(() => {
+    const base: Extensions = [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
         link: {
@@ -130,10 +213,22 @@ export function RichTextEditor({
           },
         },
       }),
-      Placeholder.configure({
-        placeholder,
-      }),
-    ],
+      Placeholder.configure({ placeholder }),
+    ];
+    if (mentionItems && mentionItems.length > 0) {
+      base.push(createMentionExtension(mentionItems));
+    }
+    return base;
+    // Rebuild only when the mention set identity changes (see caller — it's a
+    // stable prop). `placeholder` is captured at build; it rarely changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentionItems]);
+
+  const editor = useEditor({
+    immediatelyRender: false,
+    editable,
+    autofocus: autofocus ? "end" : false,
+    extensions,
     content: value,
     editorProps: {
       attributes: {

@@ -26,18 +26,25 @@ const RICH_TEXT_OPTIONS: sanitizeHtml.IOptions = {
     "br",
     "hr",
     "a",
+    // @-mention chips: Tiptap's Mention node renders `<span class="mention"
+    // data-type="mention" data-id="username">@username</span>`. Kept so mentions
+    // render highlighted; even if stripped, the inner `@username` text survives
+    // and the server-side mention parser still fires.
+    "span",
   ],
-  // Only <a> keeps attributes, and only href/target/rel — target & rel are forced
-  // to safe values by transformTags below; everything else is stripped.
+  // <a> keeps href/target/rel (forced safe below); the mention <span> keeps only
+  // its data-type/data-id markers. No other attributes anywhere.
   allowedAttributes: {
     a: ["href", "target", "rel"],
+    span: ["data-type", "data-id"],
   },
-  // Class is disallowed everywhere EXCEPT code/pre, and there only for the
-  // `language-xxx` hint Tiptap's code block emits. allowedClasses implicitly
-  // permits the class attribute for these tags and filters the values.
+  // Class is disallowed everywhere EXCEPT code/pre (the `language-xxx` hint) and
+  // the mention span (exactly `mention`). allowedClasses implicitly permits the
+  // class attribute for these tags and filters the values.
   allowedClasses: {
     code: [/^language-[\w-]+$/],
     pre: [/^language-[\w-]+$/],
+    span: ["mention"],
   },
   allowedSchemes: ["http", "https", "mailto"],
   allowedSchemesByTag: { a: ["http", "https", "mailto"] },

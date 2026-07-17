@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { RichTextEditor } from "@/components/editor";
+import { RichTextEditor, type MentionItem } from "@/components/editor";
 import { Button } from "@/components/ui/button";
 
 import type { CommentWithAuthor } from "../types";
@@ -24,6 +24,8 @@ export interface CommentSectionProps {
    * is never the security boundary — `actions.ts` re-checks on the server.
    */
   canManage?: boolean;
+  /** Project members offered by the @-mention autocomplete in the composer. */
+  mentionItems?: MentionItem[];
 }
 
 /**
@@ -37,6 +39,7 @@ export function CommentSection({
   currentUserId,
   canComment,
   canManage = false,
+  mentionItems,
 }: CommentSectionProps) {
   const router = useRouter();
   const [draft, setDraft] = React.useState("");
@@ -83,7 +86,8 @@ export function CommentSection({
             value={draft}
             onChange={setDraft}
             minHeight="80px"
-            placeholder="Add a comment…"
+            placeholder="Add a comment… use @ to mention someone"
+            mentionItems={mentionItems}
           />
           <div className="flex justify-end">
             <Button size="sm" onClick={submit} disabled={pending || empty}>

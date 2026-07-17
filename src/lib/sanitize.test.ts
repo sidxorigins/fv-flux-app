@@ -12,6 +12,18 @@ describe("sanitizeRichText", () => {
     expect(sanitizeRichText('<img src="x" onerror="alert(1)">')).toBe("");
   });
 
+  it("keeps a mention span (class + data-type/data-id) and its @username text", () => {
+    const input =
+      '<p>hey <span class="mention" data-type="mention" data-id="sam">@sam</span></p>';
+    expect(sanitizeRichText(input)).toBe(input);
+  });
+
+  it("drops a non-mention span class but preserves its text (so mention parsing still works)", () => {
+    expect(
+      sanitizeRichText('<p><span class="evil" onclick="x()">@sam</span></p>'),
+    ).toBe("<p><span>@sam</span></p>");
+  });
+
   it("strips inline style and class attributes on ordinary tags", () => {
     expect(sanitizeRichText('<p style="color:red" class="foo">Styled</p>')).toBe(
       "<p>Styled</p>",

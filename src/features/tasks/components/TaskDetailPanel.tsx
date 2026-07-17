@@ -383,6 +383,11 @@ export function TaskDetailPanel({
           currentUserId={currentUserId}
           canComment={canEdit}
           canManage={canManage}
+          // Mentionable = project members other than yourself (self-mentions
+          // are a no-op server-side).
+          mentionItems={members
+            .filter((m) => m.id !== currentUserId)
+            .map((m) => ({ id: m.username, name: m.name }))}
         />
       }
       attachments={
