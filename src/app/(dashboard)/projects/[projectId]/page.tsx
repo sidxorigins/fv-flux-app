@@ -25,8 +25,14 @@ import {
   TaskDetailPanel,
   TaskFilters,
 } from "@/features/tasks/components"
-import type { BacklogFilters, TaskDetail } from "@/features/tasks/queries"
-import { getBacklogTasks, getBoardTasks, getProjectLabels, getTask } from "@/features/tasks/queries"
+import type { BacklogFilters, BacklogSortField, TaskDetail } from "@/features/tasks/queries"
+import {
+  BACKLOG_SORT_FIELDS,
+  getBacklogTasks,
+  getBoardTasks,
+  getProjectLabels,
+  getTask,
+} from "@/features/tasks/queries"
 
 import { ProjectSettingsMenu } from "./ProjectSettingsMenu"
 import { ViewTabs } from "./ViewTabs"
@@ -56,6 +62,15 @@ function isTaskPriority(value: unknown): value is TaskPriority {
 }
 function asString(value: string | string[] | undefined): string | undefined {
   return typeof value === "string" ? value : undefined
+}
+function isSortField(value: unknown): value is BacklogSortField {
+  return (
+    typeof value === "string" &&
+    (BACKLOG_SORT_FIELDS as readonly string[]).includes(value)
+  )
+}
+function isSortDir(value: unknown): value is "asc" | "desc" {
+  return value === "asc" || value === "desc"
 }
 
 export default async function ProjectPage({
@@ -122,6 +137,8 @@ export default async function ProjectPage({
       assigneeId: asString(sp.assigneeId),
       labelId: asString(sp.labelId),
       q: asString(sp.q),
+      sort: isSortField(sp.sort) ? sp.sort : undefined,
+      dir: isSortDir(sp.dir) ? sp.dir : undefined,
       cursor: asString(sp.cursor),
     }
     const page = await getBacklogTasks(projectId, filters)

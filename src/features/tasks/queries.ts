@@ -62,6 +62,35 @@ export async function getBoardTasks(projectId: string): Promise<BoardTask[]> {
 // Backlog (filtered + cursor-paginated)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Columns the backlog table can be sorted by (exposed via clickable column headers). */
+export const BACKLOG_SORT_FIELDS = [
+  "key",
+  "priority",
+  "dueDate",
+  "status",
+  "updatedAt",
+] as const;
+export type BacklogSortField = (typeof BACKLOG_SORT_FIELDS)[number];
+
+/**
+ * Sensible default direction the first time a column is sorted (before the user has
+ * toggled it once) — soonest due date / highest priority / earliest workflow status
+ * first; alphabetical/chronological ascending otherwise. Clicking an already-active
+ * column flips to the opposite direction.
+ *
+ * Kept in sync with the client-side copy in components/BacklogView.tsx: this module
+ * wires up Prisma at load time, so a "use client" component may only import its
+ * *types* (fully erased — see `isolatedModules` in tsconfig), never its runtime
+ * values, and has to redeclare this map locally for the header click handler.
+ */
+export const BACKLOG_SORT_DEFAULT_DIR: Record<BacklogSortField, "asc" | "desc"> = {
+  key: "asc",
+  priority: "desc",
+  dueDate: "asc",
+  status: "asc",
+  updatedAt: "desc",
+};
+
 export interface BacklogFilters {
   status?: TaskStatus;
   type?: TaskType;
@@ -70,7 +99,7 @@ export interface BacklogFilters {
   labelId?: string;
   /** Free-text: case-insensitive title contains OR exact task-key match (e.g. "FLUX-42"). */
   q?: string;
-  sort?: "priority" | "dueDate" | "createdAt" | "updatedAt";
+  sort?: BacklogSortField;
   dir?: "asc" | "desc";
   /** Task id to page after (exclusive). */
   cursor?: string;
@@ -107,17 +136,33 @@ export async function getBacklogTasks(
     ];
   }
 
-  const sort = filters.sort ?? "createdAt";
-  // Sensible default direction per field: soonest due first; newest/highest otherwise.
-  const dir = filters.dir ?? (sort === "dueDate" ? "asc" : "desc");
+  // No `sort` param → the original, unchanged default ordering: newest first.
+  // `filters.sort` is whitelisted at the boundary (see page.tsx's `isSortField`),
+  // so anything reaching here is already a known BacklogSortField or undefined —
+  // never raw client input.
+  const sort: BacklogSortField | "createdAt" = filters.sort ?? "createdAt";
+  const dir: "asc" | "desc" =
+    filters.dir ?? (sort === "createdAt" ? "desc" : BACKLOG_SORT_DEFAULT_DIR[sort]);
 
   const orderBy: Prisma.TaskOrderByWithRelationInput[] = [];
   switch (sort) {
+    case "key":
+      orderBy.push({ key: dir });
+      break;
     case "priority":
+      // TaskPriority is declared LOW < MEDIUM < HIGH < URGENT in schema.prisma, and
+      // Postgres native enums order by declaration position, not alphabetically — so
+      // Prisma's asc/desc on the enum column already sorts by severity: asc goes
+      // LOW→URGENT, desc goes URGENT→LOW (most urgent first). No rank mapping needed.
       orderBy.push({ priority: dir });
       break;
     case "dueDate":
       orderBy.push({ dueDate: { sort: dir, nulls: "last" } });
+      break;
+    case "status":
+      // Same native-enum reasoning as priority: TODO < IN_PROGRESS < IN_REVIEW < DONE
+      // is declared in workflow order, so asc reads as "earliest stage first".
+      orderBy.push({ status: dir });
       break;
     case "updatedAt":
       orderBy.push({ updatedAt: dir });
