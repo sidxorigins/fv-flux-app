@@ -336,6 +336,183 @@ export async function sendMentionEmail(
   }
 }
 
+export interface DueReminderTaskInfo {
+  key: string;
+  title: string;
+  projectId: string;
+  dueDate: Date;
+}
+
+export interface SendDueReminderEmailParams {
+  to: string;
+  name: string;
+  overdue: DueReminderTaskInfo[];
+  dueSoon: DueReminderTaskInfo[];
+  appUrl: string;
+}
+
+function formatDueDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function renderDueReminderRows(
+  tasks: DueReminderTaskInfo[],
+  accent: string,
+): string {
+  return tasks
+    .map((task) => {
+      const key = escapeHtml(task.key);
+      const title = escapeHtml(task.title);
+      const due = escapeHtml(formatDueDate(task.dueDate));
+      return `<tr>
+                    <td style="padding:10px 16px;border-bottom:1px solid #2a2a2a;">
+                      <div style="font-family:Menlo,Consolas,monospace;font-size:11px;color:${accent};margin-bottom:2px;">${key}</div>
+                      <div style="font-size:14px;color:#f5f5f7;">${title}</div>
+                    </td>
+                    <td style="padding:10px 16px;border-bottom:1px solid #2a2a2a;text-align:right;white-space:nowrap;">
+                      <span style="font-size:12px;color:#9a9a9a;">${due}</span>
+                    </td>
+                  </tr>`;
+    })
+    .join("");
+}
+
+function buildDueReminderHtml(params: SendDueReminderEmailParams): string {
+  const name = escapeHtml(params.name);
+  const dashboardUrl = escapeHtml(`${params.appUrl}/dashboard`);
+
+  const overdueSection = params.overdue.length
+    ? `<tr>
+              <td style="padding:20px 32px 4px 32px;">
+                <div style="font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#f5455c;margin-bottom:8px;">Overdue (${params.overdue.length})</div>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#1f1f1f;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;">
+                  ${renderDueReminderRows(params.overdue, "#f5455c")}
+                </table>
+              </td>
+            </tr>`
+    : "";
+
+  const dueSoonSection = params.dueSoon.length
+    ? `<tr>
+              <td style="padding:20px 32px 4px 32px;">
+                <div style="font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#f5a623;margin-bottom:8px;">Due within 24h (${params.dueSoon.length})</div>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#1f1f1f;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;">
+                  ${renderDueReminderRows(params.dueSoon, "#f5a623")}
+                </table>
+              </td>
+            </tr>`
+    : "";
+
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#0a0a0a;font-family:'Outfit',Arial,Helvetica,sans-serif;color:#f5f5f7;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0a;padding:32px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background:#141414;border:1px solid #2a2a2a;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="padding:32px 32px 8px 32px;">
+                <div style="font-size:22px;font-weight:700;color:#f5f5f7;">Flux<span style="color:#ff6b35;">.</span></div>
+                <h1 style="font-size:20px;font-weight:600;margin:20px 0 8px 0;color:#f5f5f7;">Your due-date digest</h1>
+                <p style="font-size:15px;line-height:1.6;color:#9a9a9a;margin:0;">
+                  Hi ${name}, here's what needs your attention.
+                </p>
+              </td>
+            </tr>
+            ${overdueSection}
+            ${dueSoonSection}
+            <tr>
+              <td style="padding:24px 32px 32px 32px;">
+                <a href="${dashboardUrl}" style="display:inline-block;background:#ff6b35;color:#0a0a0a;font-weight:600;font-size:15px;text-decoration:none;padding:12px 24px;border-radius:10px;">
+                  Open Flux
+                </a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function buildDueReminderText(params: SendDueReminderEmailParams): string {
+  const lines: string[] = [
+    `Hi ${params.name}, here's your Flux due-date digest.`,
+    "",
+  ];
+
+  if (params.overdue.length) {
+    lines.push(`OVERDUE (${params.overdue.length})`);
+    for (const task of params.overdue) {
+      lines.push(
+        `  ${task.key} — ${task.title} (was due ${formatDueDate(task.dueDate)})`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (params.dueSoon.length) {
+    lines.push(`DUE WITHIN 24H (${params.dueSoon.length})`);
+    for (const task of params.dueSoon) {
+      lines.push(
+        `  ${task.key} — ${task.title} (due ${formatDueDate(task.dueDate)})`,
+      );
+    }
+    lines.push("");
+  }
+
+  lines.push("Open Flux:");
+  lines.push(`${params.appUrl}/dashboard`);
+
+  return lines.join("\n");
+}
+
+/**
+ * Send a due-date reminder digest ("N overdue, M due soon") to a single
+ * assignee. Same never-throw contract as the rest of this module.
+ */
+export async function sendDueReminderEmail(
+  params: SendDueReminderEmailParams,
+): Promise<SendResult> {
+  const transport = getTransport();
+  const totalCount = params.overdue.length + params.dueSoon.length;
+
+  if (!transport) {
+    console.info(
+      `[mail] SMTP not configured — due-reminder mail for ${params.to}: ${totalCount} task(s)`,
+    );
+    return { sent: false, reason: "smtp-unconfigured" };
+  }
+
+  const from = process.env.SMTP_FROM ?? "Flux <no-reply@foodverse.io>";
+  const subjectParts: string[] = [];
+  if (params.overdue.length) subjectParts.push(`${params.overdue.length} overdue`);
+  if (params.dueSoon.length) subjectParts.push(`${params.dueSoon.length} due soon`);
+  const subject = `Flux reminder: ${subjectParts.join(", ") || "task digest"}`;
+
+  try {
+    await transport.sendMail({
+      from,
+      to: params.to,
+      subject,
+      text: buildDueReminderText(params),
+      html: buildDueReminderHtml(params),
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error("[mail] due-reminder send failed", err);
+    return {
+      sent: false,
+      error: err instanceof Error ? err.message : "unknown-error",
+    };
+  }
+}
+
 /**
  * Send an invite email. Returns:
  *   { sent: true }                                    — delivered to SMTP
