@@ -203,8 +203,9 @@ model Comment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  task        Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  attachments Attachment[]
 
   @@index([taskId])
   @@index([authorId])
@@ -213,6 +214,11 @@ model Comment {
 model Attachment {
   id          String   @id @default(cuid())
   taskId      String
+  // When set, this attachment belongs to a comment (file list + inline images);
+  // null means a task-level attachment OR a composer "draft" not yet posted.
+  // `taskId` stays required regardless, so project/task-delete R2 cleanup that
+  // filters by task keeps covering comment attachments too.
+  commentId   String?
   uploaderId  String
   // R2 object key — never exposed directly; served via presigned URLs.
   key         String
@@ -221,10 +227,12 @@ model Attachment {
   size        Int
   createdAt   DateTime @default(now())
 
-  task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  uploader User @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  comment  Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  uploader User     @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
 
   @@index([taskId])
+  @@index([commentId])
   @@index([uploaderId])
 }
 

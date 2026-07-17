@@ -178,3 +178,22 @@
   font-weight: 500;
   white-space: nowrap;
 }
+
+/* Inline images (comment composer + rendered comments). Constrained so a large
+   paste doesn't blow out the drawer; block-level with a little breathing room. */
+.flux-prose img,
+.flux-prose .flux-inline-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 22rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin: 0.5rem 0;
+}
+
+/* Selected inline image in the editor. */
+.flux-prose[contenteditable="true"] img.ProseMirror-selectednode {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}

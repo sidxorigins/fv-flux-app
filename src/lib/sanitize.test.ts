@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { sanitizePlainText, sanitizeRichText } from "./sanitize";
+import {
+  extractInlineImageIds,
+  sanitizeCommentBody,
+  sanitizePlainText,
+  sanitizeRichText,
+} from "./sanitize";
 
 describe("sanitizeRichText", () => {
   it("strips <script> tags entirely, including their content", () => {
@@ -92,6 +97,65 @@ describe("sanitizeRichText", () => {
     expect(sanitizeRichText("<a>no href</a>")).toBe(
       '<a rel="noopener noreferrer nofollow" target="_blank">no href</a>',
     );
+  });
+
+  it("keeps an inline image pointing at the /api/files serve route", () => {
+    const out = sanitizeRichText('<img src="/api/files/clx123abc" alt="pic">');
+    expect(out).toContain('src="/api/files/clx123abc"');
+    expect(out).toContain('alt="pic"');
+  });
+
+  it("drops an external image src (only /api/files is allowed)", () => {
+    expect(sanitizeRichText('<img src="https://evil.example/x.png">')).toBe("");
+    expect(sanitizeRichText('<img src="data:image/png;base64,AAA">')).toBe("");
+    expect(sanitizeRichText('<img src="/api/files/../secret">')).toBe("");
+  });
+
+  it("strips onerror/srcset/style/class off an otherwise valid inline image", () => {
+    const out = sanitizeRichText(
+      '<img src="/api/files/abc" onerror="alert(1)" srcset="x 2x" style="width:9px" class="evil">',
+    );
+    expect(out).toContain('src="/api/files/abc"');
+    expect(out).not.toContain("onerror");
+    expect(out).not.toContain("srcset");
+    expect(out).not.toContain("style");
+    expect(out).not.toContain("evil");
+  });
+});
+
+describe("sanitizeCommentBody", () => {
+  it("keeps only inline images whose id is in the allowed set", () => {
+    const html =
+      '<p><img src="/api/files/keep"><img src="/api/files/drop"></p>';
+    const out = sanitizeCommentBody(html, ["keep"]);
+    expect(out).toContain("/api/files/keep");
+    expect(out).not.toContain("/api/files/drop");
+  });
+
+  it("drops a valid-shaped /api/files img when its id is not linked", () => {
+    const out = sanitizeCommentBody('<p>hi <img src="/api/files/EVIL"></p>', [
+      "other",
+    ]);
+    expect(out).not.toContain("EVIL");
+    expect(out).toContain("hi");
+  });
+
+  it("still drops external srcs regardless of the allowed set", () => {
+    expect(
+      sanitizeCommentBody('<img src="https://evil/x.png">', ["anything"]),
+    ).toBe("");
+  });
+});
+
+describe("extractInlineImageIds", () => {
+  it("returns the distinct attachment ids referenced by /api/files", () => {
+    const html =
+      '<p><img src="/api/files/aaa"> t <img src="/api/files/bbb"> <img src="/api/files/aaa"></p>';
+    expect(extractInlineImageIds(html).sort()).toEqual(["aaa", "bbb"]);
+  });
+
+  it("returns [] when there are no inline images", () => {
+    expect(extractInlineImageIds("<p>no images here</p>")).toEqual([]);
   });
 });
 

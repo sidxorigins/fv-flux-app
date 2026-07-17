@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { RichTextContent, RichTextEditor } from "@/components/editor";
+import {
+  RichTextContent,
+  RichTextEditor,
+  type MentionItem,
+} from "@/components/editor";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,10 +23,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  formatBytes,
+  iconForContentType,
+  truncateMiddle,
+} from "@/features/attachments/components/fileMeta";
 
 import type { CommentWithAuthor } from "../types";
 import { deleteComment, updateComment } from "../actions";
-import { isRichTextEmpty } from "../text";
+import { extractInlineImageIds, hasCommentContent } from "../text";
+import { uploadCommentFile } from "../upload";
 import { TimeAgo } from "./TimeAgo";
 
 function initialsOf(name: string): string {
@@ -50,22 +60,54 @@ export function CommentItem({
   comment,
   canEdit,
   canDelete,
+  mentionItems,
 }: {
   comment: CommentWithAuthor;
   /** Author only — a manager cannot edit another user's words. */
   canEdit: boolean;
   /** Author or project manager. */
   canDelete: boolean;
+  mentionItems?: MentionItem[];
 }) {
   const router = useRouter();
   const [editing, setEditing] = React.useState(false);
   const [value, setValue] = React.useState(comment.body);
   const [pending, startTransition] = React.useTransition();
 
+  // Inline images embedded in the body vs. file attachments shown as chips.
+  const inlineIds = React.useMemo(
+    () => new Set(extractInlineImageIds(comment.body)),
+    [comment.body],
+  );
+  const fileAttachments = comment.attachments.filter((a) => !inlineIds.has(a.id));
+
+  const onEditImageUpload = React.useCallback(
+    async (file: File): Promise<string | null> => {
+      const res = await uploadCommentFile(comment.taskId, file);
+      if (!res.ok) {
+        toast.error(res.error);
+        return null;
+      }
+      return res.id;
+    },
+    [comment.taskId],
+  );
+
   function save() {
-    if (pending || isRichTextEmpty(value)) return;
+    if (pending || !hasCommentContent(value, fileAttachments.length)) return;
+    // Final attachment set = images still in the edited body + kept file chips.
+    const attachmentIds = [
+      ...new Set([
+        ...extractInlineImageIds(value),
+        ...fileAttachments.map((a) => a.id),
+      ]),
+    ];
     startTransition(async () => {
-      const res = await updateComment({ commentId: comment.id, body: value });
+      const res = await updateComment({
+        commentId: comment.id,
+        body: value,
+        attachmentIds,
+      });
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -145,7 +187,8 @@ export function CommentItem({
                     <AlertDialogHeader>
                       <AlertDialogTitle>Delete comment?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This can&apos;t be undone.
+                        This can&apos;t be undone. Any images or files on it are
+                        removed too.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -172,6 +215,8 @@ export function CommentItem({
               onChange={setValue}
               minHeight="80px"
               placeholder="Edit comment…"
+              mentionItems={mentionItems}
+              onImageUpload={onEditImageUpload}
             />
             <div className="flex justify-end gap-2">
               <Button
@@ -185,14 +230,47 @@ export function CommentItem({
               <Button
                 size="sm"
                 onClick={save}
-                disabled={pending || isRichTextEmpty(value)}
+                disabled={
+                  pending || !hasCommentContent(value, fileAttachments.length)
+                }
               >
                 {pending ? "Saving…" : "Save"}
               </Button>
             </div>
           </div>
         ) : (
-          <RichTextContent html={comment.body} className="text-sm" />
+          <>
+            <RichTextContent html={comment.body} className="text-sm" />
+            {fileAttachments.length > 0 ? (
+              <ul className="space-y-1 pt-0.5">
+                {fileAttachments.map((attachment) => {
+                  const Icon = iconForContentType(attachment.contentType);
+                  return (
+                    <li key={attachment.id}>
+                      <a
+                        href={`/api/files/${attachment.id}?download=1`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={attachment.filename}
+                        className="flex items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5 text-sm outline-none transition-colors duration-150 hover:bg-surface-raised focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+                      >
+                        <Icon
+                          className="size-3.5 shrink-0 text-muted-foreground"
+                          aria-hidden
+                        />
+                        <span className="min-w-0 flex-1 truncate text-foreground">
+                          {truncateMiddle(attachment.filename)}
+                        </span>
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                          {formatBytes(attachment.size)}
+                        </span>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </>
         )}
       </div>
     </div>

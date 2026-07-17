@@ -15,6 +15,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { sendDueReminders } from "@/features/notifications/reminders";
+import { sweepOrphanDraftAttachments } from "@/features/attachments/cleanup";
 
 function safeEqual(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
@@ -44,8 +45,16 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Daily maintenance: reminder digests + orphan comment-draft cleanup. Sweep
+  // failures shouldn't fail the whole job, so it's reported separately.
   const result = await sendDueReminders();
-  return NextResponse.json({ ok: true, ...result });
+  let draftSweep: Awaited<ReturnType<typeof sweepOrphanDraftAttachments>> | { error: string };
+  try {
+    draftSweep = await sweepOrphanDraftAttachments();
+  } catch {
+    draftSweep = { error: "sweep_failed" };
+  }
+  return NextResponse.json({ ok: true, ...result, draftSweep });
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

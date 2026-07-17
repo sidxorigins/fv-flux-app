@@ -20,7 +20,13 @@
  *   and becomes available after the client effect runs).
  */
 
-import { useCallback, useEffect, useMemo, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type CSSProperties,
+} from "react";
 import {
   EditorContent,
   ReactRenderer,
@@ -30,7 +36,8 @@ import {
 import StarterKit from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import Mention from "@tiptap/extension-mention";
-import type { Extensions } from "@tiptap/core";
+import Image from "@tiptap/extension-image";
+import type { Editor, Extensions } from "@tiptap/core";
 
 import { MentionList, type MentionItem, type MentionListRef } from "./MentionList";
 import {
@@ -40,6 +47,7 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  Image as ImageIcon,
   Italic,
   Link as LinkIcon,
   List,
@@ -77,6 +85,13 @@ interface RichTextEditorProps {
    * Only passed to the comment editor (task descriptions don't mention).
    */
   mentionItems?: MentionItem[];
+  /**
+   * When provided, image paste/drop and an "Insert image" toolbar button are
+   * enabled. Called with the picked/pasted/dropped file; must upload it and
+   * resolve to the attachment id to embed (as `/api/files/<id>`), or null to
+   * abort (e.g. rejected/failed — the handler surfaces its own error toast).
+   */
+  onImageUpload?: (file: File) => Promise<string | null>;
 }
 
 /**
@@ -195,7 +210,31 @@ export function RichTextEditor({
   autofocus = false,
   className,
   mentionItems,
+  onImageUpload,
 }: RichTextEditorProps) {
+  // Keep the latest upload handler + editor instance in refs so the paste/drop
+  // handlers (baked into editorProps at creation, deps []) always call the
+  // current versions rather than a stale closure.
+  const onImageUploadRef = useRef(onImageUpload);
+  useEffect(() => {
+    onImageUploadRef.current = onImageUpload;
+  }, [onImageUpload]);
+  const editorRef = useRef<Editor | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const insertUploadedImage = useCallback(async (file: File) => {
+    const upload = onImageUploadRef.current;
+    if (!upload) return;
+    const id = await upload(file);
+    const activeEditor = editorRef.current;
+    if (!id || !activeEditor || activeEditor.isDestroyed) return;
+    activeEditor
+      .chain()
+      .focus()
+      .setImage({ src: `/api/files/${id}`, alt: file.name })
+      .run();
+  }, []);
+
   // Build the extension list once; the mention extension closes over the item
   // list (stable per editor instance — the comment editor's members don't
   // change while it's open).
@@ -214,6 +253,9 @@ export function RichTextEditor({
         },
       }),
       Placeholder.configure({ placeholder }),
+      // Included always so existing inline images render in edit mode; uploads
+      // are only wired when `onImageUpload` is provided (paste/drop/button below).
+      Image.configure({ HTMLAttributes: { class: "flux-inline-image" } }),
     ];
     if (mentionItems && mentionItems.length > 0) {
       base.push(createMentionExtension(mentionItems));
@@ -236,6 +278,29 @@ export function RichTextEditor({
         // wrapper) so clicking anywhere in the padded area focuses the editor.
         class: "flux-prose px-3 py-2.5 focus:outline-none",
       },
+      // Paste/drop of image files → upload then insert inline. Only images are
+      // consumed here; other files fall through (return false) untouched.
+      handlePaste: (_view, event) => {
+        if (!onImageUploadRef.current) return false;
+        const files = Array.from(event.clipboardData?.files ?? []).filter((f) =>
+          f.type.startsWith("image/"),
+        );
+        if (files.length === 0) return false;
+        event.preventDefault();
+        for (const file of files) void insertUploadedImage(file);
+        return true;
+      },
+      handleDrop: (_view, event) => {
+        if (!onImageUploadRef.current) return false;
+        const dt = (event as DragEvent).dataTransfer;
+        const files = Array.from(dt?.files ?? []).filter((f) =>
+          f.type.startsWith("image/"),
+        );
+        if (files.length === 0) return false;
+        event.preventDefault();
+        for (const file of files) void insertUploadedImage(file);
+        return true;
+      },
     },
     onUpdate: ({ editor: updatedEditor }) => {
       onChange(updatedEditor.getHTML());
@@ -245,11 +310,25 @@ export function RichTextEditor({
     // callbacks Tiptap invokes, so they don't need to be dependencies here.
   }, []);
 
+  // Expose the live editor to the paste/drop handlers via the ref.
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
+
   // Keep editable/placeholder in sync if they change after mount.
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     editor.setEditable(editable);
   }, [editor, editable]);
+
+  const onPickImage = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = ""; // allow re-picking the same file
+      if (file) void insertUploadedImage(file);
+    },
+    [insertUploadedImage],
+  );
 
   // Controlled-ish sync: only push external `value` changes into the editor
   // when they didn't originate from this editor's own onChange emission.
@@ -440,6 +519,25 @@ export function RichTextEditor({
           isDisabled={!editor || !toolbarState?.link}
           onClick={unsetLink}
         />
+
+        {onImageUpload ? (
+          <>
+            <Separator />
+            <ToolbarButton
+              label="Insert image"
+              icon={ImageIcon}
+              isDisabled={!editor}
+              onClick={() => imageInputRef.current?.click()}
+            />
+            <input
+              ref={imageInputRef}
+              type="file"
+              hidden
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={onPickImage}
+            />
+          </>
+        ) : null}
 
         <Separator />
 

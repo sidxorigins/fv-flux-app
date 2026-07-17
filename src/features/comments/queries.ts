@@ -29,6 +29,16 @@ export async function getComments(taskId: string): Promise<CommentWithAuthor[]> 
       author: {
         select: { id: true, name: true, username: true, avatarKey: true },
       },
+      attachments: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          filename: true,
+          contentType: true,
+          size: true,
+          uploaderId: true,
+        },
+      },
     },
   });
 }

@@ -23,7 +23,9 @@ export async function getAttachments(
   await requireProjectRole(task.projectId, "VIEWER");
 
   return prisma.attachment.findMany({
-    where: { taskId },
+    // Task-level attachments only — comment attachments (commentId set) render
+    // under their comment, not in the task's own attachment list.
+    where: { taskId, commentId: null },
     orderBy: { createdAt: "desc" },
     include: {
       uploader: {

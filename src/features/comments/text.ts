@@ -21,3 +21,27 @@ export function richTextToPlainText(html: string): string {
 export function isRichTextEmpty(html: string): boolean {
   return richTextToPlainText(html).length === 0;
 }
+
+/**
+ * Attachment ids referenced by inline images (`/api/files/<id>`) in comment HTML.
+ * Client-safe (pure regex, no sanitiser import) so the composer can tell which
+ * uploaded images are still present in the body. Mirrors the server-side
+ * `extractInlineImageIds` in lib/sanitize.
+ */
+export function extractInlineImageIds(html: string): string[] {
+  const ids = new Set<string>();
+  const re = /\/api\/files\/([A-Za-z0-9]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) !== null) ids.add(match[1]!);
+  return [...ids];
+}
+
+/**
+ * Does the comment carry anything worth posting — visible text, an inline image,
+ * or (when `attachmentCount > 0`) a file attachment?
+ */
+export function hasCommentContent(html: string, attachmentCount: number): boolean {
+  if (attachmentCount > 0) return true;
+  if (!isRichTextEmpty(html)) return true;
+  return extractInlineImageIds(html).length > 0;
+}

@@ -22,7 +22,8 @@ import {
   PROJECT_ROLE_ORDER,
   requireProjectRole,
 } from "@/lib/permissions";
-import { sanitizeRichText } from "@/lib/sanitize";
+import { sanitizeCommentBody } from "@/lib/sanitize";
+import { deleteObjects } from "@/lib/r2";
 import {
   ensureWatching,
   getTaskAudience,
@@ -65,6 +66,30 @@ function revalidate(): void {
   revalidatePath("/dashboard");
 }
 
+/**
+ * Validate that every id in `attachmentIds` is a draft upload safe to link to a
+ * comment on `taskId` by `userId`: it must exist, belong to this task, still be
+ * unlinked (`commentId` null), and be the caller's own upload. Returns the id
+ * list on success, or `null` if ANY id fails (all-or-nothing — a mismatch means
+ * a stale/crafted client, so we reject rather than silently drop).
+ */
+async function validateDraftAttachments(
+  attachmentIds: string[],
+  taskId: string,
+  userId: string,
+): Promise<string[] | null> {
+  if (attachmentIds.length === 0) return [];
+  const unique = [...new Set(attachmentIds)];
+  const rows = await prisma.attachment.findMany({
+    where: { id: { in: unique } },
+    select: { id: true, taskId: true, commentId: true, uploaderId: true },
+  });
+  const valid = rows.filter(
+    (a) => a.taskId === taskId && a.commentId === null && a.uploaderId === userId,
+  );
+  return valid.length === unique.length ? unique : null;
+}
+
 export async function addComment(
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
@@ -72,7 +97,7 @@ export async function addComment(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { taskId, body } = parsed.data;
+  const { taskId, body, attachmentIds } = parsed.data;
 
   try {
     const task = await prisma.task.findUnique({
@@ -83,9 +108,21 @@ export async function addComment(
 
     const { user } = await requireProjectRole(task.projectId, "MEMBER");
 
-    // Sanitise BEFORE persisting, then reject if nothing meaningful survived.
-    const clean = sanitizeRichText(body);
-    if (isRichTextEmpty(clean)) {
+    // Validate the draft uploads being attached: each must belong to this task,
+    // still be an unlinked draft, and be the caller's own upload.
+    const linkedIds = await validateDraftAttachments(
+      attachmentIds,
+      taskId,
+      user.id,
+    );
+    if (linkedIds === null) {
+      return { ok: false, error: "Some attachments are no longer available." };
+    }
+
+    // Sanitise BEFORE persisting; only inline images among the linked set survive.
+    const clean = sanitizeCommentBody(body, linkedIds);
+    // A comment must carry SOMETHING — text/images in the body, or a file.
+    if (isRichTextEmpty(clean) && linkedIds.length === 0) {
       return { ok: false, error: "Comment can't be empty." };
     }
 
@@ -93,6 +130,13 @@ export async function addComment(
       const created = await tx.comment.create({
         data: { taskId, authorId: user.id, body: clean },
       });
+      if (linkedIds.length > 0) {
+        // Re-guard the draft conditions in the WHERE so a concurrent link can't slip through.
+        await tx.attachment.updateMany({
+          where: { id: { in: linkedIds }, commentId: null, uploaderId: user.id, taskId },
+          data: { commentId: created.id },
+        });
+      }
       await tx.activityLog.create({
         data: { taskId, actorId: user.id, action: "commented" },
       });
@@ -129,12 +173,17 @@ export async function updateComment(input: unknown): Promise<ActionResult> {
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { commentId, body } = parsed.data;
+  const { commentId, body, attachmentIds } = parsed.data;
 
   try {
     const comment = await prisma.comment.findUnique({
       where: { id: commentId },
-      select: { authorId: true, task: { select: { projectId: true } } },
+      select: {
+        authorId: true,
+        taskId: true,
+        task: { select: { projectId: true } },
+        attachments: { select: { id: true, key: true } },
+      },
     });
     if (!comment) return { ok: false, error: "Comment not found." };
 
@@ -145,16 +194,69 @@ export async function updateComment(input: unknown): Promise<ActionResult> {
       return { ok: false, error: "You can only edit your own comments." };
     }
 
-    const clean = sanitizeRichText(body);
-    if (isRichTextEmpty(clean)) {
+    // Reconcile the desired attachment set against what's currently linked:
+    //  - ids already on THIS comment → keep.
+    //  - ids that are the caller's unlinked drafts on this task → link.
+    //  - anything else in the request → reject (stale/crafted).
+    //  - currently-linked ids NOT in the request → remove (row + R2 object).
+    const currentIds = new Set(comment.attachments.map((a) => a.id));
+    const requested = new Set(attachmentIds);
+    const toLinkCandidates = attachmentIds.filter((id) => !currentIds.has(id));
+    const newDraftIds = await validateDraftAttachments(
+      toLinkCandidates,
+      comment.taskId,
+      user.id,
+    );
+    if (newDraftIds === null) {
+      return { ok: false, error: "Some attachments are no longer available." };
+    }
+    const removed = comment.attachments.filter((a) => !requested.has(a.id));
+    const finalIds = [
+      ...comment.attachments.filter((a) => requested.has(a.id)).map((a) => a.id),
+      ...newDraftIds,
+    ];
+
+    const clean = sanitizeCommentBody(body, finalIds);
+    if (isRichTextEmpty(clean) && finalIds.length === 0) {
       return { ok: false, error: "Comment can't be empty." };
     }
 
-    // `updatedAt` is bumped automatically by Prisma's @updatedAt on any write.
-    await prisma.comment.update({
-      where: { id: commentId },
-      data: { body: clean },
+    await prisma.$transaction(async (tx) => {
+      // `updatedAt` is bumped automatically by Prisma's @updatedAt on any write.
+      await tx.comment.update({ where: { id: commentId }, data: { body: clean } });
+      if (newDraftIds.length > 0) {
+        await tx.attachment.updateMany({
+          where: {
+            id: { in: newDraftIds },
+            commentId: null,
+            uploaderId: user.id,
+            taskId: comment.taskId,
+          },
+          data: { commentId },
+        });
+      }
+      if (removed.length > 0) {
+        await tx.attachment.deleteMany({
+          where: { id: { in: removed.map((a) => a.id) }, commentId },
+        });
+      }
     });
+
+    // Delete the R2 objects for removed attachments AFTER the row delete commits.
+    if (removed.length > 0) {
+      const result = await deleteObjects(removed.map((a) => a.key));
+      if (result.failed.length > 0) {
+        await prisma.auditLog.create({
+          data: {
+            actorId: user.id,
+            action: "attachment.r2_delete_failed",
+            targetType: "Comment",
+            targetId: commentId,
+            metadata: { keys: result.failed },
+          },
+        });
+      }
+    }
 
     revalidate();
     return { ok: true };
@@ -176,6 +278,7 @@ export async function deleteComment(input: unknown): Promise<ActionResult> {
       select: {
         authorId: true,
         task: { select: { id: true, projectId: true } },
+        attachments: { select: { key: true } },
       },
     });
     if (!comment) return { ok: false, error: "Comment not found." };
@@ -194,7 +297,11 @@ export async function deleteComment(input: unknown): Promise<ActionResult> {
       };
     }
 
+    // Collect R2 keys BEFORE the delete cascade removes the attachment rows.
+    const keys = comment.attachments.map((a) => a.key);
+
     await prisma.$transaction(async (tx) => {
+      // Deleting the comment cascades its Attachment rows (schema onDelete).
       await tx.comment.delete({ where: { id: commentId } });
       await tx.activityLog.create({
         data: {
@@ -204,6 +311,22 @@ export async function deleteComment(input: unknown): Promise<ActionResult> {
         },
       });
     });
+
+    // Then the object store — tolerate partial failure with an audit breadcrumb.
+    if (keys.length > 0) {
+      const result = await deleteObjects(keys);
+      if (result.failed.length > 0) {
+        await prisma.auditLog.create({
+          data: {
+            actorId: user.id,
+            action: "attachment.r2_delete_failed",
+            targetType: "Comment",
+            targetId: commentId,
+            metadata: { keys: result.failed },
+          },
+        });
+      }
+    }
 
     revalidate();
     return { ok: true };

@@ -20,6 +20,7 @@ import {
 } from "@/lib/permissions";
 import {
   buildAttachmentKey,
+  buildCommentAttachmentKey,
   deleteObjects,
   presignDownloadUrl,
   presignUploadUrl,
@@ -135,6 +136,136 @@ export async function finalizeAttachment(
 
     revalidate();
     return { ok: true, data: { id: attachment.id } };
+  } catch (err) {
+    return toError(err);
+  }
+}
+
+/**
+ * Comment-composer upload request (step 1). Like `requestAttachmentUpload` but
+ * keys the object under `tasks/<taskId>/comments/…` so the orphan-draft sweep can
+ * tell comment uploads apart from task-level attachments (both are `commentId`
+ * null until posted). Authorises MEMBER+ on the task's project.
+ */
+export async function requestCommentUpload(
+  input: unknown,
+): Promise<ActionResult<{ uploadUrl: string; key: string }>> {
+  const parsed = requestUploadSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid file" };
+  }
+  const { taskId, filename, contentType, size } = parsed.data;
+
+  try {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { projectId: true },
+    });
+    if (!task) return { ok: false, error: "Task not found." };
+
+    await requireProjectRole(task.projectId, "MEMBER");
+
+    const key = buildCommentAttachmentKey(taskId, filename);
+    const uploadUrl = await presignUploadUrl(key, contentType, size);
+
+    return { ok: true, data: { uploadUrl, key } };
+  } catch (err) {
+    return toError(err);
+  }
+}
+
+/**
+ * Comment-composer upload finalize (step 2). Same direct-to-R2 flow as
+ * `finalizeAttachment`, but the row is created as a DRAFT: `commentId` stays null
+ * until the comment is posted (`addComment` links it), and no task ActivityLog is
+ * written for a not-yet-posted draft. Returns the new id so the composer can
+ * reference it inline (`/api/files/<id>`) and in its tray.
+ */
+export async function finalizeCommentUpload(
+  input: unknown,
+): Promise<ActionResult<{ id: string; contentType: string }>> {
+  const parsed = finalizeSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid file" };
+  }
+  const { taskId, key, filename, contentType, size } = parsed.data;
+
+  try {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { projectId: true },
+    });
+    if (!task) return { ok: false, error: "Task not found." };
+
+    const { user } = await requireProjectRole(task.projectId, "MEMBER");
+
+    // Must be a comment-draft key this task owns (see buildCommentAttachmentKey).
+    if (!key.startsWith(`tasks/${taskId}/comments/`)) {
+      return { ok: false, error: "Invalid attachment key." };
+    }
+
+    const attachment = await prisma.attachment.create({
+      data: {
+        taskId,
+        commentId: null,
+        uploaderId: user.id,
+        key,
+        filename,
+        contentType,
+        size,
+      },
+      select: { id: true, contentType: true },
+    });
+
+    return { ok: true, data: attachment };
+  } catch (err) {
+    return toError(err);
+  }
+}
+
+/**
+ * Remove a composer draft upload (image deleted from the editor, or a tray file
+ * removed before posting). Only the uploader, and only while still a draft
+ * (`commentId` null) — a posted comment's attachments are removed via
+ * `deleteComment`/`updateComment`, not here. Deletes the row and the R2 object.
+ */
+export async function discardCommentUpload(
+  attachmentId: string,
+): Promise<ActionResult> {
+  const parsed = deleteSchema.safeParse({ attachmentId });
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid attachment." };
+  }
+
+  try {
+    const attachment = await prisma.attachment.findUnique({
+      where: { id: parsed.data.attachmentId },
+      select: {
+        id: true,
+        key: true,
+        commentId: true,
+        uploaderId: true,
+        task: { select: { projectId: true } },
+      },
+    });
+    if (!attachment) return { ok: false, error: "Attachment not found." };
+
+    const { user } = await requireProjectRole(
+      attachment.task.projectId,
+      "MEMBER",
+    );
+
+    if (attachment.commentId !== null) {
+      return { ok: false, error: "That file is already attached to a comment." };
+    }
+    if (attachment.uploaderId !== user.id) {
+      return { ok: false, error: "You can only remove your own uploads." };
+    }
+
+    await prisma.attachment.delete({ where: { id: attachment.id } });
+    await deleteObjects([attachment.key]);
+
+    return { ok: true };
   } catch (err) {
     return toError(err);
   }

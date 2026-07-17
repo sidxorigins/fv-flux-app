@@ -24,6 +24,9 @@ export { getAttachments } from "./queries";
 export {
   requestAttachmentUpload,
   finalizeAttachment,
+  requestCommentUpload,
+  finalizeCommentUpload,
+  discardCommentUpload,
   getAttachmentDownloadUrl,
   deleteAttachment,
 } from "./actions";

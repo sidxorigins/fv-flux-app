@@ -102,6 +102,20 @@ export function buildAttachmentKey(taskId: string, filename: string): string {
   return `tasks/${taskId}/${randomUUID()}/${safeObjectName(filename)}`;
 }
 
+/**
+ * `tasks/<taskId>/comments/<uuid>/<basename>` — comment attachments (inline
+ * images + file list). The distinct `/comments/` segment lets the orphan-draft
+ * sweep target only unposted comment uploads, never task-level attachments
+ * (which share the `commentId = null` state). Still under `tasks/<taskId>/` so
+ * project/task-delete R2 cleanup keeps covering it.
+ */
+export function buildCommentAttachmentKey(
+  taskId: string,
+  filename: string,
+): string {
+  return `tasks/${taskId}/comments/${randomUUID()}/${safeObjectName(filename)}`;
+}
+
 /** `avatars/<userId>/<uuid>` — replace-then-delete the old key on avatar change. */
 export function buildAvatarKey(userId: string): string {
   return `avatars/${userId}/${randomUUID()}`;
