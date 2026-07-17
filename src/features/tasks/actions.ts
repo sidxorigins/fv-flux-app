@@ -9,6 +9,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { sendTaskAssignedEmail } from "@/lib/mail";
 import { deleteObjects } from "@/lib/r2";
 import { sanitizeRichText } from "@/lib/sanitize";
 import {
@@ -100,6 +101,42 @@ async function assertLabelsInProject(
   if (found.length !== unique.length) {
     throw new ActionError("One or more labels don't belong to this project.");
   }
+}
+
+/**
+ * Email the assignee that a task landed on their plate. Runs AFTER the write
+ * transaction commits; failures are logged inside sendTaskAssignedEmail and
+ * never affect the action result. Self-assignment sends nothing.
+ */
+async function notifyAssignee(params: {
+  taskId: string;
+  assigneeId: string;
+  actorId: string;
+  actorName: string;
+}): Promise<void> {
+  if (params.assigneeId === params.actorId) return;
+
+  const task = await prisma.task.findUnique({
+    where: { id: params.taskId },
+    select: {
+      key: true,
+      title: true,
+      projectId: true,
+      project: { select: { name: true } },
+      assignee: { select: { email: true, status: true } },
+    },
+  });
+  if (!task?.assignee || task.assignee.status !== "ACTIVE") return;
+
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
+  await sendTaskAssignedEmail({
+    to: task.assignee.email,
+    taskKey: task.key,
+    taskTitle: task.title,
+    projectName: task.project.name,
+    assignedByName: params.actorName,
+    taskUrl: `${base}/projects/${task.projectId}?task=${params.taskId}`,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -195,6 +232,15 @@ export async function createTask(
 
       return created;
     });
+
+    if (assigneeId) {
+      await notifyAssignee({
+        taskId: task.id,
+        assigneeId,
+        actorId: user.id,
+        actorName: user.name,
+      });
+    }
 
     revalidateProjectViews(projectId);
     return { ok: true, data: { id: task.id, key: task.key } };
@@ -354,6 +400,16 @@ export async function updateTask(
         })),
       });
     });
+
+    // Reassigned to someone (not unassigned, not self) → notify them by email.
+    if (validateAssigneeId) {
+      await notifyAssignee({
+        taskId: current.id,
+        assigneeId: validateAssigneeId,
+        actorId: user.id,
+        actorName: user.name,
+      });
+    }
 
     revalidateProjectViews(current.projectId);
     return { ok: true, data: { id: current.id } };

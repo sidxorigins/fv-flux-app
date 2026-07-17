@@ -92,3 +92,42 @@ export async function getProject(projectId: string) {
     },
   });
 }
+
+/**
+ * Projects the signed-in user may CREATE tasks in (MEMBER+ or global Admin),
+ * each with its members and labels — powers the multi-project "New task"
+ * dialog on My Tasks. VIEWER-only memberships are excluded.
+ */
+export async function getCreatableProjects() {
+  const user = await requireUser();
+
+  const projects = await prisma.project.findMany({
+    where:
+      user.globalRole === "ADMIN"
+        ? undefined
+        : {
+            memberships: {
+              some: {
+                userId: user.id,
+                projectRole: { in: ["MANAGER", "MEMBER"] },
+              },
+            },
+          },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      key: true,
+      name: true,
+      memberships: { select: { user: { select: USER_BASIC } } },
+      labels: true,
+    },
+  });
+
+  return projects.map((p) => ({
+    id: p.id,
+    key: p.key,
+    name: p.name,
+    members: p.memberships.map((m) => m.user),
+    labels: p.labels,
+  }));
+}

@@ -66,24 +66,40 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>
 
-export interface CreateTaskDialogProps {
-  projectId: string
+export interface ProjectOption {
+  id: string
+  key: string
+  name: string
   members: Member[]
   labels: ProjectLabel[]
 }
 
+export type CreateTaskDialogProps =
+  | {
+      /** Single-project mode — used on a project's board/backlog. */
+      projectId: string
+      members: Member[]
+      labels: ProjectLabel[]
+      projects?: never
+    }
+  | {
+      /** Multi-project mode — used on My Tasks; a Project select appears. */
+      projects: ProjectOption[]
+      projectId?: never
+      members?: never
+      labels?: never
+    }
+
 /**
- * "New task" dialog for the backlog toolbar. Title/type/priority/assignee/due
- * date go through react-hook-form + Zod; description (RichTextEditor) and the
- * label multi-pick are plain controlled state since neither maps cleanly onto
- * a native form input. Submits `createTask`; on success, toast + close +
- * `router.refresh()` so the backlog / board reflect the new row immediately.
+ * "New task" dialog. Title/type/priority/assignee/due date go through
+ * react-hook-form + Zod; description (RichTextEditor) and the label
+ * multi-pick are plain controlled state since neither maps cleanly onto a
+ * native form input. In multi-project mode a Project select drives which
+ * members/labels are offered. Submits `createTask`; on success, toast +
+ * close + `router.refresh()` so the backlog / board reflect the new row
+ * immediately.
  */
-export function CreateTaskDialog({
-  projectId,
-  members,
-  labels,
-}: CreateTaskDialogProps) {
+export function CreateTaskDialog(props: CreateTaskDialogProps) {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
@@ -93,6 +109,24 @@ export function CreateTaskDialog({
   const [priority, setPriority] = React.useState<TaskPriority>("MEDIUM")
   const [assigneeId, setAssigneeId] = React.useState(UNASSIGNED)
   const [formError, setFormError] = React.useState<string | null>(null)
+
+  const multi = "projects" in props && props.projects !== undefined
+  const [selectedProjectId, setSelectedProjectId] = React.useState(
+    multi ? (props.projects[0]?.id ?? "") : props.projectId,
+  )
+  const activeProject = multi
+    ? props.projects.find((p) => p.id === selectedProjectId)
+    : null
+  const projectId = multi ? selectedProjectId : props.projectId
+  const members = multi ? (activeProject?.members ?? []) : props.members
+  const labels = multi ? (activeProject?.labels ?? []) : props.labels
+
+  function onProjectChange(id: string) {
+    setSelectedProjectId(id)
+    // Assignee/labels belong to the previous project — reset them.
+    setAssigneeId(UNASSIGNED)
+    setLabelIds([])
+  }
 
   const {
     register,
@@ -115,6 +149,7 @@ export function CreateTaskDialog({
         setPriority("MEDIUM")
         setAssigneeId(UNASSIGNED)
         setFormError(null)
+        if (multi) setSelectedProjectId(props.projects[0]?.id ?? "")
       }, 150)
     }
   }
@@ -126,6 +161,10 @@ export function CreateTaskDialog({
   }
 
   const onSubmit = (values: FormValues) => {
+    if (!projectId) {
+      setFormError("Pick a project first.")
+      return
+    }
     setFormError(null)
     startTransition(async () => {
       const res = await createTask({
@@ -168,6 +207,30 @@ export function CreateTaskDialog({
           className="flex flex-col gap-4"
         >
           <FieldGroup>
+            {multi ? (
+              <Field>
+                <FieldLabel htmlFor="ct-project">Project</FieldLabel>
+                <FieldContent>
+                  <Select
+                    value={selectedProjectId}
+                    disabled={isPending}
+                    onValueChange={(v) => v && onProjectChange(v)}
+                  >
+                    <SelectTrigger id="ct-project" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {props.projects.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.key} · {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FieldContent>
+              </Field>
+            ) : null}
+
             <Field data-invalid={!!errors.title || undefined}>
               <FieldLabel htmlFor="ct-title">Title</FieldLabel>
               <FieldContent>

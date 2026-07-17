@@ -131,16 +131,7 @@ export default async function ProjectPage({
 
     viewContent = (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <TaskFilters members={members} labels={labels} />
-          {canEdit ? (
-            <CreateTaskDialog
-              projectId={projectId}
-              members={members}
-              labels={labels}
-            />
-          ) : null}
-        </div>
+        <TaskFilters members={members} labels={labels} />
 
         <BacklogView tasks={page.tasks} canEdit={canEdit} />
 
@@ -278,7 +269,16 @@ export default async function ProjectPage({
         </div>
       </header>
 
-      <ViewTabs projectId={projectId} view={view} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <ViewTabs projectId={projectId} view={view} />
+        {canEdit ? (
+          <CreateTaskDialog
+            projectId={projectId}
+            members={members}
+            labels={labels}
+          />
+        ) : null}
+      </div>
 
       <div className="min-h-0 flex-1">{viewContent}</div>
 

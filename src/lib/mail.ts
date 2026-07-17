@@ -108,6 +108,127 @@ function buildInviteText({ inviteUrl, invitedByName }: SendInviteEmailParams): s
   ].join("\n");
 }
 
+export interface SendTaskAssignedEmailParams {
+  to: string;
+  taskKey: string;
+  taskTitle: string;
+  projectName: string;
+  assignedByName: string;
+  taskUrl: string;
+}
+
+function buildTaskAssignedHtml({
+  taskKey,
+  taskTitle,
+  projectName,
+  assignedByName,
+  taskUrl,
+}: SendTaskAssignedEmailParams): string {
+  const key = escapeHtml(taskKey);
+  const title = escapeHtml(taskTitle);
+  const project = escapeHtml(projectName);
+  const who = escapeHtml(assignedByName);
+  const url = escapeHtml(taskUrl);
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#0a0a0a;font-family:'Outfit',Arial,Helvetica,sans-serif;color:#f5f5f7;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0a;padding:32px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background:#141414;border:1px solid #2a2a2a;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="padding:32px 32px 8px 32px;">
+                <div style="font-size:22px;font-weight:700;color:#f5f5f7;">Flux<span style="color:#ff6b35;">.</span></div>
+                <h1 style="font-size:20px;font-weight:600;margin:20px 0 8px 0;color:#f5f5f7;">A task was assigned to you</h1>
+                <p style="font-size:15px;line-height:1.6;color:#9a9a9a;margin:0 0 20px 0;">
+                  ${who} assigned you a task in <strong style="color:#f5f5f7;">${project}</strong>.
+                </p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#1f1f1f;border:1px solid #2a2a2a;border-radius:10px;">
+                  <tr>
+                    <td style="padding:14px 16px;">
+                      <div style="font-family:Menlo,Consolas,monospace;font-size:12px;color:#9a9a9a;margin-bottom:4px;">${key}</div>
+                      <div style="font-size:15px;font-weight:600;color:#f5f5f7;">${title}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px 8px 32px;">
+                <a href="${url}" style="display:inline-block;background:#ff6b35;color:#0a0a0a;font-weight:600;font-size:15px;text-decoration:none;padding:12px 24px;border-radius:10px;">
+                  Open task
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px 32px 32px;">
+                <p style="font-size:12px;line-height:1.6;color:#9a9a9a;margin:0;">
+                  Or paste this link into your browser:<br />
+                  <span style="color:#5b8def;word-break:break-all;">${url}</span>
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function buildTaskAssignedText({
+  taskKey,
+  taskTitle,
+  projectName,
+  assignedByName,
+  taskUrl,
+}: SendTaskAssignedEmailParams): string {
+  return [
+    `${assignedByName} assigned you a task in ${projectName}:`,
+    "",
+    `${taskKey} — ${taskTitle}`,
+    "",
+    "Open it:",
+    taskUrl,
+  ].join("\n");
+}
+
+/**
+ * Send a "task assigned to you" notification. Same contract as
+ * sendInviteEmail — never throws; unconfigured SMTP just logs the intent.
+ */
+export async function sendTaskAssignedEmail(
+  params: SendTaskAssignedEmailParams,
+): Promise<SendResult> {
+  const transport = getTransport();
+
+  if (!transport) {
+    console.info(
+      `[mail] SMTP not configured — task-assigned mail for ${params.to}: ${params.taskKey}`,
+    );
+    return { sent: false, reason: "smtp-unconfigured" };
+  }
+
+  const from = process.env.SMTP_FROM ?? "Flux <no-reply@foodverse.io>";
+
+  try {
+    await transport.sendMail({
+      from,
+      to: params.to,
+      subject: `[${params.taskKey}] ${params.taskTitle} — assigned to you`,
+      text: buildTaskAssignedText(params),
+      html: buildTaskAssignedHtml(params),
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error("[mail] task-assigned send failed", err);
+    return {
+      sent: false,
+      error: err instanceof Error ? err.message : "unknown-error",
+    };
+  }
+}
+
 /**
  * Send an invite email. Returns:
  *   { sent: true }                                    — delivered to SMTP
