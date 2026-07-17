@@ -85,6 +85,7 @@ model User {
   notifications      Notification[]      @relation("NotificationRecipient")
   actedNotifications Notification[]      @relation("NotificationActor")
   watchedTasks       TaskWatcher[]
+  savedViews         SavedView[]
 }
 
 model Project {
@@ -103,6 +104,7 @@ model Project {
   memberships ProjectMembership[]
   tasks       Task[]
   labels      Label[]
+  savedViews  SavedView[]
 
   @@index([leadId])
 }
@@ -301,4 +303,28 @@ model TaskWatcher {
 
   @@unique([taskId, userId])
   @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Saved filter views (backlog)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SavedView {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  name      String
+  // Serialised URL search string of the backlog's filters + sort, e.g.
+  // "status=TODO&priority=HIGH&sort=priority&dir=desc". Applied verbatim as
+  // `?<query>` when the view is selected.
+  query     String
+  createdAt DateTime @default(now())
+
+  // Personal, per-user views: deleting the user or the project takes the view with it.
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // A user can't have two views with the same name in the same project.
+  @@unique([userId, projectId, name])
+  @@index([projectId])
 }

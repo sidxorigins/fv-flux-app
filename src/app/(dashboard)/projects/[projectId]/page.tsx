@@ -33,6 +33,7 @@ import {
   getProjectLabels,
   getTask,
 } from "@/features/tasks/queries"
+import { getSavedViews } from "@/features/saved-views/queries"
 
 import { ProjectSettingsMenu } from "./ProjectSettingsMenu"
 import { ViewTabs } from "./ViewTabs"
@@ -141,7 +142,10 @@ export default async function ProjectPage({
       dir: isSortDir(sp.dir) ? sp.dir : undefined,
       cursor: asString(sp.cursor),
     }
-    const page = await getBacklogTasks(projectId, filters)
+    const [page, savedViews] = await Promise.all([
+      getBacklogTasks(projectId, filters),
+      getSavedViews(projectId),
+    ])
 
     const startParams = new URLSearchParams(currentParams)
     startParams.delete("cursor")
@@ -150,7 +154,12 @@ export default async function ProjectPage({
 
     viewContent = (
       <div className="flex flex-col gap-4">
-        <TaskFilters members={members} labels={labels} />
+        <TaskFilters
+          members={members}
+          labels={labels}
+          projectId={projectId}
+          savedViews={savedViews}
+        />
 
         <BacklogView tasks={page.tasks} canEdit={canEdit} />
 
