@@ -48,3 +48,4 @@ next-env.d.ts
 # prisma — generated client (regenerated via `prisma generate` / postinstall)
 /src/generated/
 .gstack/
+.prisma/
