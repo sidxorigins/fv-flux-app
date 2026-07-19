@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin, requireProjectRole } from "@/lib/permissions";
 import type { Prisma } from "@/generated/prisma/client";
 import type { GlobalRole, ProjectRole, UserStatus } from "@/generated/prisma/enums";
+import { buildTargetLabel, type AuditTargetLookups } from "./audit-target";
 
 const PAGE_SIZE = 25;
 
@@ -339,6 +340,7 @@ export interface AdminAuditRow {
   action: string;
   targetType: string;
   targetId: string;
+  targetLabel: string;
   actorName: string;
   actorUsername: string;
   metadata: unknown;
@@ -381,12 +383,76 @@ export async function getAuditLog(params: {
   const hasMore = rows.length > PAGE_SIZE;
   const page = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
 
+  // Group target ids by type, then one query per present type (no N+1).
+  const idsByType = new Map<string, Set<string>>();
+  for (const r of page) {
+    const set = idsByType.get(r.targetType) ?? new Set<string>();
+    set.add(r.targetId);
+    idsByType.set(r.targetType, set);
+  }
+  const idsFor = (t: string) => [...(idsByType.get(t) ?? [])];
+
+  const [users, projects, tasks, invites, memberships] = await Promise.all([
+    idsFor("User").length
+      ? prisma.user.findMany({
+          where: { id: { in: idsFor("User") } },
+          select: { id: true, name: true, username: true },
+        })
+      : [],
+    idsFor("Project").length
+      ? prisma.project.findMany({
+          where: { id: { in: idsFor("Project") } },
+          select: { id: true, key: true, name: true },
+        })
+      : [],
+    idsFor("Task").length
+      ? prisma.task.findMany({
+          where: { id: { in: idsFor("Task") } },
+          select: { id: true, key: true },
+        })
+      : [],
+    idsFor("Invite").length
+      ? prisma.invite.findMany({
+          where: { id: { in: idsFor("Invite") } },
+          select: { id: true, email: true },
+        })
+      : [],
+    idsFor("ProjectMembership").length
+      ? prisma.projectMembership.findMany({
+          where: { id: { in: idsFor("ProjectMembership") } },
+          select: {
+            id: true,
+            user: { select: { name: true, username: true } },
+            project: { select: { key: true } },
+          },
+        })
+      : [],
+  ]);
+
+  const lookups: AuditTargetLookups = {
+    users: new Map(users.map((u) => [u.id, { name: u.name, username: u.username }])),
+    projects: new Map(projects.map((p) => [p.id, { key: p.key, name: p.name }])),
+    tasks: new Map(tasks.map((t) => [t.id, { key: t.key }])),
+    invites: new Map(invites.map((i) => [i.id, { email: i.email }])),
+    memberships: new Map(
+      memberships.map((m) => [
+        m.id,
+        {
+          userName: m.user.name,
+          username: m.user.username,
+          projectKey: m.project.key,
+        },
+      ]),
+    ),
+  };
+
   return {
     items: page.map((r) => ({
       id: r.id,
       action: r.action,
       targetType: r.targetType,
       targetId: r.targetId,
+      targetLabel: buildTargetLabel(r.targetType, r.targetId, lookups),
       actorName: r.actor.name,
       actorUsername: r.actor.username,
       metadata: r.metadata,
