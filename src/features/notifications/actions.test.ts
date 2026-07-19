@@ -68,6 +68,7 @@ beforeEach(() => {
 
 describe("addTaskWatcher", () => {
   it("adds a project member as watcher (MEMBER+)", async () => {
+    db.taskWatcher.findUnique.mockResolvedValueOnce(null); // treat as a brand-new watcher
     mockRPR.mockResolvedValue({ user: { id: "u-actor" }, role: "MEMBER" });
     mockGPR.mockResolvedValue("MEMBER"); // target is a member
     const res = await addTaskWatcher({ taskId: "t1", userId: "u-target" });
@@ -105,6 +106,16 @@ describe("addTaskWatcher", () => {
     mockRPR.mockRejectedValue(new AuthorizationError("FORBIDDEN"));
     const res = await addTaskWatcher({ taskId: "t1", userId: "u-target" });
     expect(res).toEqual({ ok: false, error: "You don't have permission to do that." });
+  });
+
+  it("does not re-log or re-notify when already watching", async () => {
+    mockRPR.mockResolvedValue({ user: { id: "u-actor" }, role: "MEMBER" });
+    mockGPR.mockResolvedValue("MEMBER"); // target is a member
+    // db.taskWatcher.findUnique keeps the default { id: "w1" } → already watching
+    const res = await addTaskWatcher({ taskId: "t1", userId: "u-target" });
+    expect(res).toEqual({ ok: true, data: { added: false } });
+    expect(db.activityLog.create).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
   });
 });
 

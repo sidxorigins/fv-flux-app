@@ -152,11 +152,23 @@ export async function addTaskWatcher(
     });
     if (!target) return fail("User not found.");
 
+    const already = await prisma.taskWatcher.findUnique({
+      where: { taskId_userId: { taskId, userId } },
+      select: { id: true },
+    });
+
     await prisma.taskWatcher.upsert({
       where: { taskId_userId: { taskId, userId } },
       update: {},
       create: { taskId, userId },
     });
+
+    // Already watching → don't write a duplicate activity row or re-notify.
+    if (already) {
+      revalidatePath(`/projects/${task.projectId}`, "layout");
+      return { ok: true, data: { added: false } };
+    }
+
     try {
       await prisma.activityLog.create({
         data: {
