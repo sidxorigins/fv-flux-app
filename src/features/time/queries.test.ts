@@ -15,7 +15,7 @@ vi.mock("@/lib/permissions", () => ({
 
 vi.mock("@/lib/db", () => {
   const prisma = {
-    task: { findUnique: vi.fn() },
+    task: { findUnique: vi.fn(), findMany: vi.fn() },
     timeEntry: { aggregate: vi.fn(), groupBy: vi.fn(), findMany: vi.fn() },
     user: { findMany: vi.fn() },
   };
@@ -24,10 +24,10 @@ vi.mock("@/lib/db", () => {
 
 import { prisma } from "@/lib/db";
 import { requireProjectRole } from "@/lib/permissions";
-import { getTaskTime } from "./queries";
+import { getProjectTimeReport, getTaskTime } from "./queries";
 
 const db = prisma as unknown as {
-  task: { findUnique: Mock };
+  task: { findUnique: Mock; findMany: Mock };
   timeEntry: { aggregate: Mock; groupBy: Mock; findMany: Mock };
   user: { findMany: Mock };
 };
@@ -41,6 +41,7 @@ beforeEach(() => {
   db.timeEntry.groupBy.mockResolvedValue([{ userId: "u1", _sum: { minutes: 60 } }]);
   db.user.findMany.mockResolvedValue([{ id: "u1", name: "A", username: "a", avatarKey: null }]);
   db.timeEntry.findMany.mockResolvedValue([]);
+  db.task.findMany.mockResolvedValue([]);
 });
 
 describe("getTaskTime role gating", () => {
@@ -65,5 +66,16 @@ describe("getTaskTime role gating", () => {
     // entries query NOT scoped to a single user
     const call = db.timeEntry.findMany.mock.calls[0][0];
     expect(call.where.userId).toBeUndefined();
+  });
+});
+
+describe("getProjectTimeReport role gating", () => {
+  it("member sees totals only (byUser/byTask null)", async () => {
+    mockRPR.mockResolvedValue({ user: { id: "u1" }, role: "MEMBER" });
+    db.timeEntry.aggregate.mockResolvedValue({ _sum: { minutes: 120 } });
+    const res = await getProjectTimeReport("p1");
+    expect(res.byUser).toBeNull();
+    expect(res.byTask).toBeNull();
+    expect(res.canManage).toBe(false);
   });
 });

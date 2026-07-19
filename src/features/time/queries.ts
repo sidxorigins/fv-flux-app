@@ -99,3 +99,64 @@ export async function getTaskTime(taskId: string): Promise<TaskTime> {
     entries: entries.map((e) => ({ ...e, minutes: e.minutes ?? 0 })),
   };
 }
+
+export interface ProjectTaskTime {
+  task: { id: string; key: string; title: string };
+  minutes: number;
+}
+export interface ProjectTimeReport {
+  totalMinutes: number;
+  myMinutes: number;
+  canManage: boolean;
+  byUser: PerUserTime[] | null;
+  byTask: ProjectTaskTime[] | null;
+}
+
+/**
+ * Project time report. Everyone VIEWER+ gets project total + their own; the
+ * by-user and by-task breakdowns are MANAGER/Admin-only.
+ */
+export async function getProjectTimeReport(projectId: string): Promise<ProjectTimeReport> {
+  const { user, role } = await requireProjectRole(projectId, "VIEWER");
+  const canManage = PROJECT_ROLE_ORDER[role] >= PROJECT_ROLE_ORDER.MANAGER;
+  const where = { task: { projectId }, endedAt: { not: null } } as const;
+
+  const [totalAgg, myAgg] = await Promise.all([
+    prisma.timeEntry.aggregate({ where, _sum: { minutes: true } }),
+    prisma.timeEntry.aggregate({ where: { ...where, userId: user.id }, _sum: { minutes: true } }),
+  ]);
+
+  let byUser: PerUserTime[] | null = null;
+  let byTask: ProjectTaskTime[] | null = null;
+  if (canManage) {
+    const [gu, gt] = await Promise.all([
+      prisma.timeEntry.groupBy({ by: ["userId"], where, _sum: { minutes: true } }),
+      prisma.timeEntry.groupBy({ by: ["taskId"], where, _sum: { minutes: true } }),
+    ]);
+    const [users, tasks] = await Promise.all([
+      prisma.user.findMany({ where: { id: { in: gu.map((g) => g.userId) } }, select: USER_BASIC }),
+      prisma.task.findMany({
+        where: { id: { in: gt.map((g) => g.taskId) } },
+        select: { id: true, key: true, title: true },
+      }),
+    ]);
+    const uById = new Map(users.map((u) => [u.id, u]));
+    const tById = new Map(tasks.map((t) => [t.id, t]));
+    byUser = gu
+      .map((g) => ({ user: uById.get(g.userId), minutes: g._sum.minutes ?? 0 }))
+      .filter((r): r is PerUserTime => r.user !== undefined)
+      .sort((a, b) => b.minutes - a.minutes);
+    byTask = gt
+      .map((g) => ({ task: tById.get(g.taskId), minutes: g._sum.minutes ?? 0 }))
+      .filter((r): r is ProjectTaskTime => r.task !== undefined)
+      .sort((a, b) => b.minutes - a.minutes);
+  }
+
+  return {
+    totalMinutes: totalAgg._sum.minutes ?? 0,
+    myMinutes: myAgg._sum.minutes ?? 0,
+    canManage,
+    byUser,
+    byTask,
+  };
+}
