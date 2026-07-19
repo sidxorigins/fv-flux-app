@@ -89,9 +89,9 @@ export function AuditTable({ rows }: { rows: AdminAuditRow[] }) {
                   <TableCell>
                     <span className="font-mono text-xs text-muted-foreground">{r.action}</span>
                   </TableCell>
-                  <TableCell>
+                  <TableCell title={r.targetId}>
                     <span className="text-muted-foreground">{r.targetType}</span>{" "}
-                    <span className="font-mono text-xs text-muted-foreground">{r.targetId}</span>
+                    <span className="text-foreground">{r.targetLabel}</span>
                   </TableCell>
                 </TableRow>
                 {canExpand && isOpen ? (
