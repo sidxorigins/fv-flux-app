@@ -23,8 +23,8 @@ vi.mock("@/lib/db", () => {
 });
 
 import { prisma } from "@/lib/db";
-import { requireProjectRole } from "@/lib/permissions";
-import { getProjectTimeReport, getTaskTime } from "./queries";
+import { requireProjectRole, requireUser } from "@/lib/permissions";
+import { getMyLoggedHours, getProjectTimeReport, getTaskTime } from "./queries";
 
 const db = prisma as unknown as {
   task: { findUnique: Mock; findMany: Mock };
@@ -77,5 +77,20 @@ describe("getProjectTimeReport role gating", () => {
     expect(res.byUser).toBeNull();
     expect(res.byTask).toBeNull();
     expect(res.canManage).toBe(false);
+  });
+});
+
+describe("getMyLoggedHours", () => {
+  it("sums this week + groups by project (own only)", async () => {
+    (requireUser as unknown as Mock).mockResolvedValue({ id: "u1" });
+    db.timeEntry.aggregate.mockResolvedValue({ _sum: { minutes: 200 } });
+    db.timeEntry.groupBy.mockResolvedValue([]); // no per-project rows
+    const res = await getMyLoggedHours();
+    expect(res.thisWeekMinutes).toBe(200);
+    expect(res.byProject).toEqual([]);
+    // aggregate where is scoped to the caller
+    expect(db.timeEntry.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ userId: "u1" }) }),
+    );
   });
 });

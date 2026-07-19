@@ -160,3 +160,55 @@ export async function getProjectTimeReport(projectId: string): Promise<ProjectTi
     byTask,
   };
 }
+
+function startOfIsoWeek(d: Date): Date {
+  const date = new Date(d);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7)); // Mon = 0
+  return date;
+}
+
+export interface MyLoggedHours {
+  thisWeekMinutes: number;
+  byProject: { project: { id: string; key: string; name: string }; minutes: number }[];
+}
+
+/** The signed-in user's own logged time: this-week total + all-time by project. */
+export async function getMyLoggedHours(): Promise<MyLoggedHours> {
+  const user = await requireUser();
+  const weekStart = startOfIsoWeek(new Date());
+  const done = { endedAt: { not: null } } as const;
+
+  const [weekAgg, grouped] = await Promise.all([
+    prisma.timeEntry.aggregate({
+      where: { userId: user.id, ...done, startedAt: { gte: weekStart } },
+      _sum: { minutes: true },
+    }),
+    prisma.timeEntry.groupBy({
+      by: ["taskId"],
+      where: { userId: user.id, ...done },
+      _sum: { minutes: true },
+    }),
+  ]);
+
+  // Roll the per-task sums up to per-project.
+  let byProject: MyLoggedHours["byProject"] = [];
+  if (grouped.length > 0) {
+    const tasks = await prisma.task.findMany({
+      where: { id: { in: grouped.map((g) => g.taskId) } },
+      select: { id: true, project: { select: { id: true, key: true, name: true } } },
+    });
+    const projByTask = new Map(tasks.map((t) => [t.id, t.project]));
+    const acc = new Map<string, { project: { id: string; key: string; name: string }; minutes: number }>();
+    for (const g of grouped) {
+      const project = projByTask.get(g.taskId);
+      if (!project) continue;
+      const cur = acc.get(project.id) ?? { project, minutes: 0 };
+      cur.minutes += g._sum.minutes ?? 0;
+      acc.set(project.id, cur);
+    }
+    byProject = [...acc.values()].sort((a, b) => b.minutes - a.minutes);
+  }
+
+  return { thisWeekMinutes: weekAgg._sum.minutes ?? 0, byProject };
+}
