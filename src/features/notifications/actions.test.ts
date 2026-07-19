@@ -45,6 +45,7 @@ vi.mock("@/lib/db", () => {
 
 import { prisma } from "@/lib/db";
 import { requireProjectRole, getProjectRole } from "@/lib/permissions";
+import { notify } from "@/features/notifications/service";
 import { addTaskWatcher, removeTaskWatcher } from "./actions";
 
 interface MockModel { findUnique: Mock; upsert: Mock; delete: Mock; create: Mock }
@@ -53,6 +54,7 @@ const db = prisma as unknown as {
 };
 const mockRPR = requireProjectRole as unknown as Mock;
 const mockGPR = getProjectRole as unknown as Mock;
+const mockNotify = notify as unknown as Mock;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -72,6 +74,22 @@ describe("addTaskWatcher", () => {
     expect(res).toEqual({ ok: true, data: { added: true } });
     expect(db.taskWatcher.upsert).toHaveBeenCalledOnce();
     expect(db.activityLog.create).toHaveBeenCalledOnce();
+    expect(db.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "watcher_added",
+          field: "watcher",
+          newValue: "Jane Doe",
+        }),
+      }),
+    );
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "TASK_WATCHER_ADDED",
+        recipientIds: ["u-target"],
+        taskId: "t1",
+      }),
+    );
   });
 
   it("rejects a non-member target", async () => {
@@ -96,6 +114,15 @@ describe("removeTaskWatcher", () => {
     const res = await removeTaskWatcher({ taskId: "t1", userId: "u-self" });
     expect(res).toEqual({ ok: true, data: { removed: true } });
     expect(db.taskWatcher.delete).toHaveBeenCalledOnce();
+    expect(db.activityLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "watcher_removed",
+          field: "watcher",
+          oldValue: "Jane Doe",
+        }),
+      }),
+    );
   });
 
   it("forbids a VIEWER removing someone else", async () => {

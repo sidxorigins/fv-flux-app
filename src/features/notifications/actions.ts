@@ -157,15 +157,19 @@ export async function addTaskWatcher(
       update: {},
       create: { taskId, userId },
     });
-    await prisma.activityLog.create({
-      data: {
-        taskId,
-        actorId: user.id,
-        action: "watcher_added",
-        field: "watcher",
-        newValue: target.name,
-      },
-    });
+    try {
+      await prisma.activityLog.create({
+        data: {
+          taskId,
+          actorId: user.id,
+          action: "watcher_added",
+          field: "watcher",
+          newValue: target.name,
+        },
+      });
+    } catch (err) {
+      console.error("[watcher activity] failed", err);
+    }
     await notify({
       recipientIds: [userId],
       actorId: user.id,
@@ -212,15 +216,19 @@ export async function removeTaskWatcher(
         select: { name: true },
       });
       await prisma.taskWatcher.delete({ where: { id: existing.id } });
-      await prisma.activityLog.create({
-        data: {
-          taskId,
-          actorId: user.id,
-          action: "watcher_removed",
-          field: "watcher",
-          oldValue: target?.name ?? null,
-        },
-      });
+      try {
+        await prisma.activityLog.create({
+          data: {
+            taskId,
+            actorId: user.id,
+            action: "watcher_removed",
+            field: "watcher",
+            oldValue: target?.name ?? null,
+          },
+        });
+      } catch (err) {
+        console.error("[watcher activity] failed", err);
+      }
     }
     revalidatePath(`/projects/${task.projectId}`, "layout");
     return { ok: true, data: { removed: Boolean(existing) } };
