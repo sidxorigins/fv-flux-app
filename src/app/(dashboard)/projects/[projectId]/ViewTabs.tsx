@@ -13,7 +13,7 @@ export function ViewTabs({
   view,
 }: {
   projectId: string
-  view: "board" | "backlog"
+  view: "board" | "backlog" | "time"
 }) {
   const tabClass = (active: boolean) =>
     cn(
@@ -44,6 +44,14 @@ export function ViewTabs({
         className={tabClass(view === "backlog")}
       >
         Backlog
+      </Link>
+      <Link
+        href={`/projects/${projectId}?view=time`}
+        role="tab"
+        aria-selected={view === "time"}
+        className={tabClass(view === "time")}
+      >
+        Time
       </Link>
     </div>
   )

@@ -20,8 +20,9 @@ import {
 import { getTaskActivity } from "@/features/tasks/activity"
 import { getTaskWatchers, isWatchingTask } from "@/features/notifications/queries"
 import type { TaskWatcherItem } from "@/features/notifications/queries"
-import { getTaskTime, getRunningTimer } from "@/features/time/queries"
+import { getTaskTime, getRunningTimer, getProjectTimeReport } from "@/features/time/queries"
 import type { RunningTimer, TaskTime } from "@/features/time/queries"
+import { ProjectTimeReport } from "@/features/time/components/ProjectTimeReport"
 import type { ActivityEntry } from "@/features/tasks/activity"
 import {
   AssigneeAvatar,
@@ -129,7 +130,8 @@ export default async function ProjectPage({
       ])
     : null
 
-  const view = sp.view === "backlog" ? "backlog" : "board"
+  const view: "board" | "backlog" | "time" =
+    sp.view === "backlog" ? "backlog" : sp.view === "time" ? "time" : "board"
   const taskId = asString(sp.task) ?? null
 
   const labels = await getProjectLabels(projectId)
@@ -173,7 +175,10 @@ export default async function ProjectPage({
   }
 
   let viewContent: React.ReactNode
-  if (view === "board") {
+  if (view === "time") {
+    const report = await getProjectTimeReport(projectId)
+    viewContent = <ProjectTimeReport report={report} />
+  } else if (view === "board") {
     const [boardTasks, savedViews] = await Promise.all([
       getBoardTasks(projectId, filterSet),
       getSavedViews(projectId),
