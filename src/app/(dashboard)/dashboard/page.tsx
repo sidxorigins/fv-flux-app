@@ -19,6 +19,8 @@ import {
   getWorkload,
 } from "@/features/dashboard/queries";
 import { getNotificationsPage } from "@/features/notifications/queries";
+import { getMyLoggedHours } from "@/features/time/queries";
+import { MyLoggedHours } from "@/features/time/components/MyLoggedHours";
 import { KpiCard } from "@/features/dashboard/components/KpiCard";
 import {
   StatusDonut,
@@ -134,6 +136,7 @@ export default async function DashboardPage() {
     work,
     inbox,
     creatable,
+    loggedHours,
   ] = await Promise.all([
     getKpis(scope),
     getStatusDistribution(scope),
@@ -144,6 +147,7 @@ export default async function DashboardPage() {
     getMyWorkGrouped(),
     getNotificationsPage({ unreadOnly: true, limit: 5 }),
     getCreatableProjects(),
+    getMyLoggedHours(),
   ]);
 
   const completedDelta = kpis.completedThisWeek - kpis.completedLastWeek;
@@ -243,6 +247,10 @@ export default async function DashboardPage() {
               }
             >
               <InboxPanel notifications={inbox.items} />
+            </Panel>
+
+            <Panel title="My logged hours" scope="you">
+              <MyLoggedHours data={loggedHours} />
             </Panel>
 
             <Panel title="Status distribution" scope="team">
