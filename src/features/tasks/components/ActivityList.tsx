@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import {
   ArrowRightLeft,
   CalendarDays,
+  Eye,
   FileX,
   MessageSquareOff,
   MessageSquareText,
@@ -70,6 +71,7 @@ function iconFor(entry: ActivityEntry): LucideIcon {
   if (entry.field === "priority") return Tag
   if (entry.field === "assignee") return UserRound
   if (entry.field === "dueDate") return CalendarDays
+  if (entry.field === "watcher") return Eye
   switch (entry.action) {
     case "created":
       return Plus
@@ -114,6 +116,13 @@ function describe(entry: ActivityEntry): ReactNode {
   }
   if (field === "assignee") {
     return newValue ? "changed the assignee" : "unassigned this task"
+  }
+  if (field === "watcher") {
+    return action === "watcher_removed" ? (
+      <>removed {mono(oldValue ?? "someone")} as watcher</>
+    ) : (
+      <>added {mono(newValue ?? "someone")} as watcher</>
+    )
   }
   if (field === "dueDate") {
     return newValue ? (

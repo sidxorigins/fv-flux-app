@@ -36,6 +36,8 @@ export function notificationSentence(n: NotificationItem): string {
       return `${who} commented`
     case "TASK_STATUS_CHANGED":
       return `${who} changed the status`
+    case "TASK_WATCHER_ADDED":
+      return `${who} added you as a watcher`
     default:
       return `${who} updated this task`
   }
