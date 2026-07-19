@@ -183,6 +183,7 @@ export default async function ProjectPage({
           labels={labels}
           projectId={projectId}
           savedViews={savedViews}
+          currentUserId={session.user.id}
         />
         <div className="min-h-0 flex-1">
           <BoardView tasks={boardTasks} disabled={!canEdit} />
@@ -213,6 +214,7 @@ export default async function ProjectPage({
           labels={labels}
           projectId={projectId}
           savedViews={savedViews}
+          currentUserId={session.user.id}
         />
 
         <BacklogView tasks={page.tasks} canEdit={canEdit} />

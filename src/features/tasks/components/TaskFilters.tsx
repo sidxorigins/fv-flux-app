@@ -6,6 +6,7 @@ import { Bookmark, Loader2, Save, Search, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
@@ -36,6 +37,7 @@ export interface TaskFiltersProps {
   labels: ProjectLabel[]
   projectId: string
   savedViews: SavedViewSummary[]
+  currentUserId: string
 }
 
 /**
@@ -220,6 +222,7 @@ export function TaskFilters({
   labels,
   projectId,
   savedViews,
+  currentUserId,
 }: TaskFiltersProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -237,6 +240,19 @@ export function TaskFilters({
     router.replace(qs ? `${pathname}?${qs}` : pathname)
   }
 
+  function toggleAssignee(value: string) {
+    const params = new URLSearchParams(searchParams.toString())
+    const current = params.getAll("assigneeId")
+    params.delete("assigneeId")
+    const next = current.includes(value)
+      ? current.filter((v) => v !== value)
+      : [...current, value]
+    for (const v of next) params.append("assigneeId", v)
+    params.delete("cursor")
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname)
+  }
+
   // Debounced push: only navigate once the typed value settles.
   React.useEffect(() => {
     if (query === currentQuery) return
@@ -248,8 +264,21 @@ export function TaskFilters({
   const status = searchParams.get("status") ?? ALL
   const type = searchParams.get("type") ?? ALL
   const priority = searchParams.get("priority") ?? ALL
-  const assigneeId = searchParams.get("assigneeId") ?? ALL
   const labelId = searchParams.get("labelId") ?? ALL
+
+  const selectedAssignees = searchParams.getAll("assigneeId")
+  const assigneeCount = selectedAssignees.length
+  const assigneeTriggerLabel =
+    assigneeCount === 0
+      ? "All assignees"
+      : assigneeCount === 1
+        ? selectedAssignees[0] === "me"
+          ? "Assigned to me"
+          : selectedAssignees[0] === "none"
+            ? "Unassigned"
+            : (members.find((m) => m.id === selectedAssignees[0])?.name ??
+              "1 assignee")
+        : `${assigneeCount} assignees`
 
   // Base UI's <SelectValue> renders the raw value unless the Root is given an
   // `items` value→label map — without these the triggers show "ALL"/enum/id.
@@ -276,13 +305,6 @@ export function TaskFilters({
     }),
     [],
   )
-  const assigneeItems = React.useMemo(
-    () => ({
-      [ALL]: "All assignees",
-      ...Object.fromEntries(members.map((m) => [m.id, m.name])),
-    }),
-    [members],
-  )
   const labelItems = React.useMemo(
     () => ({
       [ALL]: "All labels",
@@ -295,7 +317,7 @@ export function TaskFilters({
     status !== ALL ||
     type !== ALL ||
     priority !== ALL ||
-    assigneeId !== ALL ||
+    assigneeCount > 0 ||
     labelId !== ALL ||
     currentQuery !== ""
 
@@ -379,23 +401,54 @@ export function TaskFilters({
       </Select>
 
       {members.length > 0 ? (
-        <Select
-          value={assigneeId}
-          items={assigneeItems}
-          onValueChange={(v) => updateParam("assigneeId", v === ALL ? null : v)}
-        >
-          <SelectTrigger aria-label="Filter by assignee" className="w-full sm:w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All assignees</SelectItem>
-            {members.map((m) => (
-              <SelectItem key={m.id} value={m.id}>
-                {m.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-between sm:w-40"
+                aria-label="Filter by assignee"
+              />
+            }
+          >
+            <span className="truncate">{assigneeTriggerLabel}</span>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-56 p-2">
+            <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto">
+              <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-foreground hover:bg-surface-raised">
+                <Checkbox
+                  checked={selectedAssignees.includes("me")}
+                  onCheckedChange={() => toggleAssignee("me")}
+                />
+                <span>Assigned to me</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-foreground hover:bg-surface-raised">
+                <Checkbox
+                  checked={selectedAssignees.includes("none")}
+                  onCheckedChange={() => toggleAssignee("none")}
+                />
+                <span>Unassigned</span>
+              </label>
+              <Separator className="my-1" />
+              {members.map((m) => (
+                <label
+                  key={m.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-foreground hover:bg-surface-raised"
+                >
+                  <Checkbox
+                    checked={selectedAssignees.includes(m.id)}
+                    onCheckedChange={() => toggleAssignee(m.id)}
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    {m.name}{" "}
+                    <span className="text-muted-foreground">@{m.username}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
       ) : null}
 
       {labels.length > 0 ? (
