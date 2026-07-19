@@ -132,12 +132,31 @@ export default async function ProjectPage({
 
   const labels = await getProjectLabels(projectId)
 
-  // Carries every current search param forward into pagination/tab links.
+  // Carries every current search param forward into pagination/tab links —
+  // array-aware so repeated params (e.g. multiple assigneeId) aren't dropped.
   const currentParams = new URLSearchParams()
   for (const [key, value] of Object.entries(sp)) {
-    const v = asString(value)
-    if (v) currentParams.set(key, v)
+    if (Array.isArray(value)) for (const v of value) currentParams.append(key, v)
+    else if (value) currentParams.set(key, value)
   }
+
+  // Assignee filter is a repeatable param; each value is a user id, "me"
+  // (resolved to the signed-in user so saved views stay portable), or "none"
+  // (unassigned).
+  const rawAssignee = sp.assigneeId
+  const assigneeValues = Array.isArray(rawAssignee)
+    ? rawAssignee
+    : rawAssignee
+      ? [rawAssignee]
+      : []
+  const includeUnassigned = assigneeValues.includes("none")
+  const assigneeIds = [
+    ...new Set(
+      assigneeValues
+        .filter((v) => v !== "none")
+        .map((v) => (v === "me" ? session.user.id : v)),
+    ),
+  ]
 
   // The filter subset both views share (board narrows its columns; backlog
   // adds sort + pagination on top).
@@ -145,7 +164,8 @@ export default async function ProjectPage({
     status: isTaskStatus(sp.status) ? sp.status : undefined,
     type: isTaskType(sp.type) ? sp.type : undefined,
     priority: isTaskPriority(sp.priority) ? sp.priority : undefined,
-    assigneeId: asString(sp.assigneeId),
+    assigneeIds,
+    includeUnassigned,
     labelId: asString(sp.labelId),
     q: asString(sp.q),
   }
