@@ -51,14 +51,17 @@ export interface TaskFilterSet {
   status?: TaskStatus;
   type?: TaskType;
   priority?: TaskPriority;
-  assigneeId?: string;
+  /** Filter to these assignees (OR). Empty/undefined = no assignee filter. */
+  assigneeIds?: string[];
+  /** Also include tasks with no assignee (ORed with assigneeIds). */
+  includeUnassigned?: boolean;
   labelId?: string;
   /** Free-text: case-insensitive title contains OR exact task-key match. */
   q?: string;
 }
 
 /** Build the shared `where` for top-level project tasks + the common filters. */
-function taskFilterWhere(
+export function taskFilterWhere(
   projectId: string,
   filters: TaskFilterSet,
 ): Prisma.TaskWhereInput {
@@ -66,15 +69,33 @@ function taskFilterWhere(
   if (filters.status) where.status = filters.status;
   if (filters.type) where.type = filters.type;
   if (filters.priority) where.priority = filters.priority;
-  if (filters.assigneeId) where.assigneeId = filters.assigneeId;
   if (filters.labelId) where.labels = { some: { id: filters.labelId } };
+
+  const and: Prisma.TaskWhereInput[] = [];
+
+  // Assignee: ids (IN), unassigned (null), or both (OR under AND so it never
+  // collides with the search OR-group below).
+  const ids = filters.assigneeIds ?? [];
+  if (ids.length > 0 && filters.includeUnassigned) {
+    and.push({ OR: [{ assigneeId: null }, { assigneeId: { in: ids } }] });
+  } else if (ids.length > 0) {
+    where.assigneeId = { in: ids };
+  } else if (filters.includeUnassigned) {
+    where.assigneeId = null;
+  }
+
+  // Free-text: title contains OR exact key match.
   if (filters.q?.trim()) {
     const q = filters.q.trim();
-    where.OR = [
-      { title: { contains: q, mode: "insensitive" } },
-      { key: { equals: q, mode: "insensitive" } },
-    ];
+    and.push({
+      OR: [
+        { title: { contains: q, mode: "insensitive" } },
+        { key: { equals: q, mode: "insensitive" } },
+      ],
+    });
   }
+
+  if (and.length > 0) where.AND = and;
   return where;
 }
 
@@ -134,7 +155,10 @@ export interface BacklogFilters {
   status?: TaskStatus;
   type?: TaskType;
   priority?: TaskPriority;
-  assigneeId?: string;
+  /** Filter to these assignees (OR). Empty/undefined = no assignee filter. */
+  assigneeIds?: string[];
+  /** Also include tasks with no assignee (ORed with assigneeIds). */
+  includeUnassigned?: boolean;
   labelId?: string;
   /** Free-text: case-insensitive title contains OR exact task-key match (e.g. "FLUX-42"). */
   q?: string;
