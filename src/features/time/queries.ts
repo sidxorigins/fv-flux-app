@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
-import { PROJECT_ROLE_ORDER, requireProjectRole, requireUser } from "@/lib/permissions";
+import { PROJECT_ROLE_ORDER, requireAdmin, requireProjectRole, requireUser } from "@/lib/permissions";
 
 const USER_BASIC = { id: true, name: true, username: true, avatarKey: true } as const;
 type UserBasic = { id: string; name: string; username: string; avatarKey: string | null };
@@ -211,4 +211,32 @@ export async function getMyLoggedHours(): Promise<MyLoggedHours> {
   }
 
   return { thisWeekMinutes: weekAgg._sum.minutes ?? 0, byProject };
+}
+
+export interface GlobalTimeReport {
+  totalMinutes: number;
+  byUser: PerUserTime[];
+}
+
+/** Cross-project time totals by user. Admin-only. */
+export async function getGlobalTimeReport(): Promise<GlobalTimeReport> {
+  await requireAdmin();
+  const done = { endedAt: { not: null } } as const;
+  const [totalAgg, grouped] = await Promise.all([
+    prisma.timeEntry.aggregate({ where: done, _sum: { minutes: true } }),
+    prisma.timeEntry.groupBy({ by: ["userId"], where: done, _sum: { minutes: true } }),
+  ]);
+  let byUser: PerUserTime[] = [];
+  if (grouped.length > 0) {
+    const users = await prisma.user.findMany({
+      where: { id: { in: grouped.map((g) => g.userId) } },
+      select: USER_BASIC,
+    });
+    const byId = new Map(users.map((u) => [u.id, u]));
+    byUser = grouped
+      .map((g) => ({ user: byId.get(g.userId), minutes: g._sum.minutes ?? 0 }))
+      .filter((r): r is PerUserTime => r.user !== undefined)
+      .sort((a, b) => b.minutes - a.minutes);
+  }
+  return { totalMinutes: totalAgg._sum.minutes ?? 0, byUser };
 }

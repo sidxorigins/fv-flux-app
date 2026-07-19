@@ -11,6 +11,7 @@ vi.mock("@/lib/permissions", () => ({
   PROJECT_ROLE_ORDER: { VIEWER: 0, MEMBER: 1, MANAGER: 2 },
   requireProjectRole: vi.fn(),
   requireUser: vi.fn(),
+  requireAdmin: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => {
@@ -24,7 +25,7 @@ vi.mock("@/lib/db", () => {
 
 import { prisma } from "@/lib/db";
 import { requireProjectRole, requireUser } from "@/lib/permissions";
-import { getMyLoggedHours, getProjectTimeReport, getTaskTime } from "./queries";
+import { getGlobalTimeReport, getMyLoggedHours, getProjectTimeReport, getTaskTime } from "./queries";
 
 const db = prisma as unknown as {
   task: { findUnique: Mock; findMany: Mock };
@@ -92,5 +93,18 @@ describe("getMyLoggedHours", () => {
     expect(db.timeEntry.aggregate).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ userId: "u1" }) }),
     );
+  });
+});
+
+describe("getGlobalTimeReport", () => {
+  it("requires admin + returns by-user totals", async () => {
+    const { requireAdmin } = await import("@/lib/permissions");
+    (requireAdmin as unknown as Mock).mockResolvedValue({ id: "admin" });
+    db.timeEntry.aggregate.mockResolvedValue({ _sum: { minutes: 500 } });
+    db.timeEntry.groupBy.mockResolvedValue([{ userId: "u1", _sum: { minutes: 500 } }]);
+    db.user.findMany.mockResolvedValue([{ id: "u1", name: "A", username: "a", avatarKey: null }]);
+    const res = await getGlobalTimeReport();
+    expect(res.totalMinutes).toBe(500);
+    expect(res.byUser[0]?.minutes).toBe(500);
   });
 });
