@@ -79,6 +79,33 @@ describe("getProjectTimeReport role gating", () => {
     expect(res.byTask).toBeNull();
     expect(res.canManage).toBe(false);
   });
+
+  it("manager sees populated by-user + by-task breakdowns, sorted desc", async () => {
+    mockRPR.mockResolvedValue({ user: { id: "mgr" }, role: "MANAGER" });
+    db.timeEntry.aggregate.mockResolvedValue({ _sum: { minutes: 120 } });
+    // getProjectTimeReport fires Promise.all([groupBy(by userId), groupBy(by taskId)])
+    // — left-to-right, so the first Once is the userId grouping, the second is taskId.
+    db.timeEntry.groupBy
+      .mockResolvedValueOnce([
+        { userId: "u1", _sum: { minutes: 90 } },
+        { userId: "u2", _sum: { minutes: 30 } },
+      ])
+      .mockResolvedValueOnce([{ taskId: "t1", _sum: { minutes: 120 } }]);
+    db.user.findMany.mockResolvedValue([
+      { id: "u1", name: "A", username: "a", avatarKey: null },
+      { id: "u2", name: "B", username: "b", avatarKey: null },
+    ]);
+    db.task.findMany.mockResolvedValue([{ id: "t1", key: "OPS-1", title: "T" }]);
+
+    const res = await getProjectTimeReport("p1");
+    expect(res.canManage).toBe(true);
+    expect(res.byUser).toHaveLength(2);
+    expect(res.byUser?.[0]?.minutes).toBe(90); // sorted desc
+    expect(res.byUser?.[0]?.user.id).toBe("u1");
+    expect(res.byTask).toEqual([
+      { task: { id: "t1", key: "OPS-1", title: "T" }, minutes: 120 },
+    ]);
+  });
 });
 
 describe("getMyLoggedHours", () => {
@@ -93,6 +120,25 @@ describe("getMyLoggedHours", () => {
     expect(db.timeEntry.aggregate).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ userId: "u1" }) }),
     );
+  });
+
+  it("getMyLoggedHours rolls per-task sums up to per-project", async () => {
+    (requireUser as unknown as Mock).mockResolvedValue({ id: "u1" });
+    db.timeEntry.aggregate.mockResolvedValue({ _sum: { minutes: 50 } }); // this week
+    db.timeEntry.groupBy.mockResolvedValue([
+      { taskId: "t1", _sum: { minutes: 30 } },
+      { taskId: "t2", _sum: { minutes: 20 } },
+    ]);
+    db.task.findMany.mockResolvedValue([
+      { id: "t1", project: { id: "p1", key: "OPS", name: "Ops" } },
+      { id: "t2", project: { id: "p1", key: "OPS", name: "Ops" } },
+    ]);
+
+    const res = await getMyLoggedHours();
+    expect(res.thisWeekMinutes).toBe(50);
+    expect(res.byProject).toEqual([
+      { project: { id: "p1", key: "OPS", name: "Ops" }, minutes: 50 },
+    ]);
   });
 });
 
