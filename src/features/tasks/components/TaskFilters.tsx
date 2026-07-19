@@ -37,7 +37,6 @@ export interface TaskFiltersProps {
   labels: ProjectLabel[]
   projectId: string
   savedViews: SavedViewSummary[]
-  currentUserId: string
 }
 
 /**
@@ -222,7 +221,6 @@ export function TaskFilters({
   labels,
   projectId,
   savedViews,
-  currentUserId,
 }: TaskFiltersProps) {
   const router = useRouter()
   const pathname = usePathname()
