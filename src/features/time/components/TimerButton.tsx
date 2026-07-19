@@ -18,6 +18,13 @@ function hms(ms: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`
 }
 
+// Mismatch-free "mounted on client" signal (server=false) without a
+// setState-in-effect — same idiom as TimeAgo.tsx. Lets the live clock upgrade
+// only after hydration so SSR and the first client render agree.
+const noopSubscribe = () => () => {}
+const getMounted = () => true
+const getMountedServer = () => false
+
 export interface TimerButtonProps {
   taskId: string
   /** The signed-in user's running timer anywhere, or null. */
@@ -30,12 +37,13 @@ export function TimerButton({ taskId, running }: TimerButtonProps) {
   const [isPending, startTransition] = React.useTransition()
   const runningHere = running?.taskId === taskId
 
-  // Live-tick elapsed only while the timer runs on this task.
-  const [now, setNow] = React.useState<number>(() => (runningHere ? Date.now() : 0))
+  const mounted = React.useSyncExternalStore(noopSubscribe, getMounted, getMountedServer)
+  // 1s re-render tick — the setState lives in the interval CALLBACK, never
+  // synchronously in the effect body.
+  const [, setTick] = React.useState(0)
   React.useEffect(() => {
     if (!runningHere || !running) return
-    setNow(Date.now())
-    const id = setInterval(() => setNow(Date.now()), 1000)
+    const id = setInterval(() => setTick((n) => n + 1), 1000)
     return () => clearInterval(id)
   }, [runningHere, running])
 
@@ -64,11 +72,11 @@ export function TimerButton({ taskId, running }: TimerButtonProps) {
   }
 
   if (runningHere && running) {
-    const elapsed = now ? now - new Date(running.startedAt).getTime() : 0
+    const elapsed = mounted ? new Date().getTime() - new Date(running.startedAt).getTime() : 0
     return (
       <Button size="sm" variant="secondary" onClick={onStop} disabled={isPending} aria-label="Stop timer">
         <Square aria-hidden />
-        <span className="tabular-nums">{hms(elapsed)}</span>
+        <span className="tabular-nums" suppressHydrationWarning>{hms(elapsed)}</span>
       </Button>
     )
   }
