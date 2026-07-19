@@ -31,7 +31,9 @@ import { AttachmentSection } from "@/features/attachments/components/AttachmentS
 import type { AttachmentWithUploader } from "@/features/attachments/types"
 import { CommentSection } from "@/features/comments/components/CommentSection"
 import type { CommentWithAuthor } from "@/features/comments/types"
+import { WatchersSection } from "@/features/notifications/components/WatchersSection"
 import { WatchToggle } from "@/features/notifications/components/WatchToggle"
+import type { TaskWatcherItem } from "@/features/notifications/queries"
 
 import type { ActivityEntry } from "../activity"
 import { createTask, deleteTask, updateTask, updateTaskStatus } from "../actions"
@@ -55,6 +57,8 @@ export interface TaskDetailPanelProps {
   projectLabels: ProjectLabel[]
   /** Whether the current user watches this task (drives the header toggle). */
   isWatching: boolean
+  /** Users currently watching this task (drives the Watchers panel). */
+  watchers: TaskWatcherItem[]
   /** MEMBER+ on this project — edit description/status/priority, add subtasks. */
   canEdit: boolean
   /** MANAGER+ (or global Admin) — manage others' comments/attachments, delete any task. */
@@ -77,6 +81,7 @@ export function TaskDetailPanel({
   members,
   projectLabels,
   isWatching,
+  watchers,
   canEdit,
   canManage,
 }: TaskDetailPanelProps) {
@@ -409,6 +414,15 @@ export function TaskDetailPanel({
       }
       activity={
         activity.length > 0 ? <ActivityList entries={activity} /> : undefined
+      }
+      watchers={
+        <WatchersSection
+          taskId={task.id}
+          watchers={watchers}
+          members={members}
+          canManage={canEdit}
+          currentUserId={currentUserId}
+        />
       }
       headerAction={<WatchToggle taskId={task.id} watching={isWatching} />}
       members={members}
