@@ -34,6 +34,8 @@ import type { CommentWithAuthor } from "@/features/comments/types"
 import { WatchersSection } from "@/features/notifications/components/WatchersSection"
 import { WatchToggle } from "@/features/notifications/components/WatchToggle"
 import type { TaskWatcherItem } from "@/features/notifications/queries"
+import { TaskTimeSection } from "@/features/time/components/TaskTimeSection"
+import type { RunningTimer, TaskTime } from "@/features/time/queries"
 
 import type { ActivityEntry } from "../activity"
 import { createTask, deleteTask, updateTask, updateTaskStatus } from "../actions"
@@ -59,6 +61,10 @@ export interface TaskDetailPanelProps {
   isWatching: boolean
   /** Users currently watching this task (drives the Watchers panel). */
   watchers: TaskWatcherItem[]
+  /** Time totals + entries for this task (drives the Time panel). */
+  taskTime: TaskTime
+  /** The signed-in user's running timer, if any (drives the timer button). */
+  runningTimer: RunningTimer | null
   /** MEMBER+ on this project — edit description/status/priority, add subtasks. */
   canEdit: boolean
   /** MANAGER+ (or global Admin) — manage others' comments/attachments, delete any task. */
@@ -82,6 +88,8 @@ export function TaskDetailPanel({
   projectLabels,
   isWatching,
   watchers,
+  taskTime,
+  runningTimer,
   canEdit,
   canManage,
 }: TaskDetailPanelProps) {
@@ -421,6 +429,15 @@ export function TaskDetailPanel({
           watchers={watchers}
           members={members}
           canManage={canEdit}
+          currentUserId={currentUserId}
+        />
+      }
+      time={
+        <TaskTimeSection
+          taskId={task.id}
+          time={taskTime}
+          running={runningTimer}
+          canLog={canEdit}
           currentUserId={currentUserId}
         />
       }

@@ -67,6 +67,8 @@ export type TaskDrawerProps = {
   activity?: React.ReactNode
   /** Watchers panel (built by the caller). */
   watchers?: React.ReactNode
+  /** Time-tracking panel (built by the caller). */
+  time?: React.ReactNode
   /** Optional header control (e.g. the watch toggle). */
   headerAction?: React.ReactNode
   /** Project members offered by the assignee editor. */
@@ -212,6 +214,7 @@ export function TaskDrawer({
   comments,
   activity,
   watchers,
+  time,
   headerAction,
   members,
   projectLabels,
@@ -561,6 +564,9 @@ export function TaskDrawer({
                 </DrawerSection>
                 <DrawerSection title="Watchers" emptyText="No watchers yet.">
                   {watchers}
+                </DrawerSection>
+                <DrawerSection title="Time" emptyText="No time logged yet.">
+                  {time}
                 </DrawerSection>
                 <DrawerSection title="Attachments" emptyText="No attachments.">
                   {attachments}

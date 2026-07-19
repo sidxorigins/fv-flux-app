@@ -20,6 +20,8 @@ import {
 import { getTaskActivity } from "@/features/tasks/activity"
 import { getTaskWatchers, isWatchingTask } from "@/features/notifications/queries"
 import type { TaskWatcherItem } from "@/features/notifications/queries"
+import { getTaskTime, getRunningTimer } from "@/features/time/queries"
+import type { RunningTimer, TaskTime } from "@/features/time/queries"
 import type { ActivityEntry } from "@/features/tasks/activity"
 import {
   AssigneeAvatar,
@@ -274,21 +276,34 @@ export default async function ProjectPage({
     activity: ActivityEntry[]
     isWatching: boolean
     watchers: TaskWatcherItem[]
+    taskTime: TaskTime
+    runningTimer: RunningTimer | null
   } | null = null
 
   if (taskId) {
     try {
       const task = await getTask(taskId)
       if (task && task.projectId === projectId) {
-        const [comments, attachments, activity, isWatching, watchers] =
+        const [comments, attachments, activity, isWatching, watchers, taskTime, runningTimer] =
           await Promise.all([
             getComments(taskId),
             getAttachments(taskId),
             getTaskActivity(taskId),
             isWatchingTask(taskId),
             getTaskWatchers(taskId),
+            getTaskTime(taskId),
+            getRunningTimer(),
           ])
-        drawerData = { task, comments, attachments, activity, isWatching, watchers }
+        drawerData = {
+          task,
+          comments,
+          attachments,
+          activity,
+          isWatching,
+          watchers,
+          taskTime,
+          runningTimer,
+        }
       }
     } catch (err) {
       if (!(err instanceof AuthorizationError)) throw err
@@ -308,6 +323,8 @@ export default async function ProjectPage({
       projectLabels={labels}
       isWatching={drawerData.isWatching}
       watchers={drawerData.watchers}
+      taskTime={drawerData.taskTime}
+      runningTimer={drawerData.runningTimer}
       canEdit={canEdit}
       canManage={canManage}
     />
