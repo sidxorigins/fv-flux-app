@@ -7,9 +7,13 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import {
   AuthorizationError,
+  getProjectRole,
+  PROJECT_ROLE_ORDER,
   requireProjectRole,
   requireUser,
 } from "@/lib/permissions";
+import { notify } from "./service";
+import { watcherActionSchema, type WatcherActionInput } from "./schemas";
 import {
   getNotificationsPage,
   type NotificationsPage,
@@ -114,6 +118,112 @@ export async function toggleWatchTask(
     }
     revalidatePath(`/projects/${task.projectId}`, "layout");
     return { ok: true, data: { watching: !existing } };
+  } catch (err) {
+    return mapAuthError(err) ?? fail("Something went wrong.");
+  }
+}
+
+/**
+ * Add another project member as a watcher (MEMBER+). The target must belong to
+ * the task's project. Idempotent; notifies the added user and logs activity with
+ * a NAME snapshot (never the id, so the activity reads "added Jane Doe as watcher").
+ */
+export async function addTaskWatcher(
+  input: WatcherActionInput,
+): Promise<ActionResult<{ added: boolean }>> {
+  const parsed = watcherActionSchema.safeParse(input);
+  if (!parsed.success) return fail("Invalid input.");
+  const { taskId, userId } = parsed.data;
+  try {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { projectId: true },
+    });
+    if (!task) return fail("Task not found.");
+
+    const { user } = await requireProjectRole(task.projectId, "MEMBER");
+
+    const targetRole = await getProjectRole(userId, task.projectId);
+    if (!targetRole) return fail("That user isn't a member of this project.");
+
+    const target = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+    if (!target) return fail("User not found.");
+
+    await prisma.taskWatcher.upsert({
+      where: { taskId_userId: { taskId, userId } },
+      update: {},
+      create: { taskId, userId },
+    });
+    await prisma.activityLog.create({
+      data: {
+        taskId,
+        actorId: user.id,
+        action: "watcher_added",
+        field: "watcher",
+        newValue: target.name,
+      },
+    });
+    await notify({
+      recipientIds: [userId],
+      actorId: user.id,
+      type: "TASK_WATCHER_ADDED",
+      taskId,
+    });
+    revalidatePath(`/projects/${task.projectId}`, "layout");
+    return { ok: true, data: { added: true } };
+  } catch (err) {
+    return mapAuthError(err) ?? fail("Something went wrong.");
+  }
+}
+
+/**
+ * Remove a watcher. Allowed for MEMBER+ (any watcher) or for the signed-in user
+ * removing themselves. Logs activity with the removed user's name snapshot.
+ */
+export async function removeTaskWatcher(
+  input: WatcherActionInput,
+): Promise<ActionResult<{ removed: boolean }>> {
+  const parsed = watcherActionSchema.safeParse(input);
+  if (!parsed.success) return fail("Invalid input.");
+  const { taskId, userId } = parsed.data;
+  try {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { projectId: true },
+    });
+    if (!task) return fail("Task not found.");
+
+    const { user, role } = await requireProjectRole(task.projectId, "VIEWER");
+    const isSelf = userId === user.id;
+    if (!isSelf && PROJECT_ROLE_ORDER[role] < PROJECT_ROLE_ORDER.MEMBER) {
+      return fail("You don't have permission to do that.");
+    }
+
+    const existing = await prisma.taskWatcher.findUnique({
+      where: { taskId_userId: { taskId, userId } },
+      select: { id: true },
+    });
+    if (existing) {
+      const target = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true },
+      });
+      await prisma.taskWatcher.delete({ where: { id: existing.id } });
+      await prisma.activityLog.create({
+        data: {
+          taskId,
+          actorId: user.id,
+          action: "watcher_removed",
+          field: "watcher",
+          oldValue: target?.name ?? null,
+        },
+      });
+    }
+    revalidatePath(`/projects/${task.projectId}`, "layout");
+    return { ok: true, data: { removed: Boolean(existing) } };
   } catch (err) {
     return mapAuthError(err) ?? fail("Something went wrong.");
   }
