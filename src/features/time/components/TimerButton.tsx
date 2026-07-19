@@ -42,7 +42,10 @@ export function TimerButton({ taskId, running }: TimerButtonProps) {
   function onStart() {
     startTransition(async () => {
       const res = await startTimer({ taskId })
-      if (!res.ok) return toast.error(res.error)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
       if (res.data?.stoppedTaskKey) toast.info(`Stopped timer on ${res.data.stoppedTaskKey}`)
       toast.success("Timer started")
       router.refresh()
@@ -51,7 +54,10 @@ export function TimerButton({ taskId, running }: TimerButtonProps) {
   function onStop() {
     startTransition(async () => {
       const res = await stopTimer()
-      if (!res.ok) return toast.error(res.error)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
       toast.success("Timer stopped")
       router.refresh()
     })

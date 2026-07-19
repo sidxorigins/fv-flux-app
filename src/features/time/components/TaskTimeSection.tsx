@@ -28,7 +28,10 @@ export function TaskTimeSection({ taskId, time, running, canLog, currentUserId }
   function onDelete(id: string) {
     startTransition(async () => {
       const res = await deleteTimeEntry({ id })
-      if (!res.ok) return toast.error(res.error)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
       router.refresh()
     })
   }
