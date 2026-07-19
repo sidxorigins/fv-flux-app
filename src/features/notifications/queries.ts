@@ -2,7 +2,7 @@
 // signed-in user — you only ever see your own notifications.
 
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/permissions";
+import { requireProjectRole, requireUser } from "@/lib/permissions";
 import type { NotificationType } from "@/generated/prisma/enums";
 
 const USER_BASIC = {
@@ -135,4 +135,33 @@ export async function isWatchingTask(taskId: string): Promise<boolean> {
     select: { id: true },
   });
   return Boolean(watcher);
+}
+
+export interface TaskWatcherItem {
+  id: string;
+  name: string;
+  username: string;
+  avatarKey: string | null;
+}
+
+/**
+ * The users watching a task (oldest first). VIEWER+ on the task's project.
+ * Returns [] for a missing task — mirrors getTaskActivity (nothing to show,
+ * nothing leaked).
+ */
+export async function getTaskWatchers(taskId: string): Promise<TaskWatcherItem[]> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { projectId: true },
+  });
+  if (!task) return [];
+
+  await requireProjectRole(task.projectId, "VIEWER");
+
+  const rows = await prisma.taskWatcher.findMany({
+    where: { taskId },
+    orderBy: { createdAt: "asc" },
+    select: { user: { select: USER_BASIC } },
+  });
+  return rows.map((r) => r.user);
 }
