@@ -86,6 +86,7 @@ model User {
   actedNotifications Notification[]      @relation("NotificationActor")
   watchedTasks       TaskWatcher[]
   savedViews         SavedView[]
+  timeEntries        TimeEntry[]
 }
 
 model Project {
@@ -174,6 +175,7 @@ model Task {
   activityLogs  ActivityLog[]
   notifications Notification[]
   watchers      TaskWatcher[]
+  timeEntries   TimeEntry[]
 
   @@index([projectId, status, position])
   @@index([assigneeId])
@@ -336,4 +338,26 @@ model SavedView {
   // A user can't have two views with the same name in the same project.
   @@unique([userId, projectId, name])
   @@index([projectId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Time tracking
+// ─────────────────────────────────────────────────────────────────────────────
+
+model TimeEntry {
+  id        String    @id @default(cuid())
+  taskId    String
+  userId    String
+  startedAt DateTime
+  endedAt   DateTime? // null = running
+  minutes   Int? // set on stop: round((endedAt-startedAt)/60000), min 1
+  note      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([userId, endedAt])
 }
