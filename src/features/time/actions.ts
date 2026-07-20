@@ -16,6 +16,7 @@ import {
   type UpdateTimeEntryInput,
   type DeleteTimeEntryInput,
 } from "./schemas";
+import { startTimerForUser, stopTimerForUser } from "./service";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -39,10 +40,6 @@ function mapAuthError(err: unknown): { ok: false; error: string } | null {
   return null;
 }
 
-function minutesBetween(start: Date, end: Date): number {
-  return Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
-}
-
 /**
  * Start a timer on a task (MEMBER+). One running timer per user: any existing
  * running timer is auto-closed first (in the same tx), and its task key is
@@ -61,25 +58,7 @@ export async function startTimer(
     if (!task) return fail("Task not found.");
     const { user } = await requireProjectRole(task.projectId, "MEMBER");
 
-    const now = new Date();
-    const { stoppedTaskKey } = await prisma.$transaction(async (tx) => {
-      const running = await tx.timeEntry.findFirst({
-        where: { userId: user.id, endedAt: null },
-        select: { id: true, startedAt: true, task: { select: { key: true } } },
-      });
-      let stoppedTaskKey: string | null = null;
-      if (running) {
-        await tx.timeEntry.update({
-          where: { id: running.id },
-          data: { endedAt: now, minutes: minutesBetween(running.startedAt, now) },
-        });
-        stoppedTaskKey = running.task.key;
-      }
-      await tx.timeEntry.create({
-        data: { taskId: parsed.data.taskId, userId: user.id, startedAt: now },
-      });
-      return { stoppedTaskKey };
-    });
+    const { stoppedTaskKey } = await startTimerForUser(user.id, parsed.data.taskId);
 
     revalidatePath(`/projects/${task.projectId}`, "layout");
     revalidatePath("/", "layout");
@@ -93,17 +72,9 @@ export async function startTimer(
 export async function stopTimer(): Promise<ActionResult<{ stopped: boolean }>> {
   try {
     const user = await requireUser();
-    const running = await prisma.timeEntry.findFirst({
-      where: { userId: user.id, endedAt: null },
-      select: { id: true, startedAt: true, task: { select: { projectId: true } } },
-    });
-    if (!running) return { ok: true, data: { stopped: false } };
-    const now = new Date();
-    await prisma.timeEntry.update({
-      where: { id: running.id },
-      data: { endedAt: now, minutes: minutesBetween(running.startedAt, now) },
-    });
-    revalidatePath(`/projects/${running.task.projectId}`, "layout");
+    const { stopped, projectId } = await stopTimerForUser(user.id);
+    if (!stopped) return { ok: true, data: { stopped: false } };
+    if (projectId) revalidatePath(`/projects/${projectId}`, "layout");
     revalidatePath("/", "layout");
     return { ok: true, data: { stopped: true } };
   } catch (err) {
