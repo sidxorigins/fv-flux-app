@@ -59,18 +59,19 @@ enum TaskPriority {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
-  id             String     @id @default(cuid())
-  name           String
+  id              String     @id @default(cuid())
+  name            String
   // Stored lowercase-normalised; format validation happens in Zod at the boundary.
-  username       String     @unique
-  email          String     @unique
-  hashedPassword String?
-  globalRole     GlobalRole @default(USER)
-  status         UserStatus @default(ACTIVE)
-  bio            String?
-  avatarKey      String?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  username        String     @unique
+  email           String     @unique
+  hashedPassword  String?
+  globalRole      GlobalRole @default(USER)
+  status          UserStatus @default(ACTIVE)
+  bio             String?
+  avatarKey       String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  tourCompletedAt DateTime?
 
   // Relations
   projectsLed        Project[]           @relation("ProjectLead")
