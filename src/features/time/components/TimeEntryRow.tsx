@@ -39,6 +39,10 @@ export function TimeEntryRow({ entry, canEdit }: TimeEntryRowProps) {
   }
 
   function commit() {
+    // Re-entrancy guard: pressing Enter starts the transition, which sets
+    // `disabled` on the still-focused input → the browser blurs it → onBlur
+    // would fire commit() a second time. Bail if a save is already in flight.
+    if (isPending) return
     const minutes = parseDuration(draft)
     if (minutes === null) {
       toast.error('Enter a duration like "2h 30m" or "90"')
