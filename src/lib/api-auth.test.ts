@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
 vi.mock("@/lib/db", () => ({ prisma: { apiKey: { findUnique: vi.fn(), update: vi.fn() } } }));
-vi.mock("./rate-limit", () => ({ checkRateLimit: vi.fn(() => ({ ok: true, retryAfter: 0 })) }));
+vi.mock("./rate-limit", () => ({ rateLimit: vi.fn(() => ({ ok: true, retryAfterMs: 0, remaining: 1 })) }));
 
 import { prisma } from "@/lib/db";
-import { checkRateLimit } from "./rate-limit";
+import { rateLimit } from "./rate-limit";
 import { authenticateApiKey } from "./api-auth";
 import { generateApiKey } from "./api-key";
 
@@ -19,7 +19,7 @@ function req(auth?: string): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   update.mockResolvedValue({});
-  (checkRateLimit as unknown as Mock).mockReturnValue({ ok: true, retryAfter: 0 });
+  (rateLimit as unknown as Mock).mockReturnValue({ ok: true, retryAfterMs: 0, remaining: 1 });
 });
 
 describe("authenticateApiKey", () => {

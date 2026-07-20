@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { hashApiKey, API_KEY_PREFIX } from "./api-key";
-import { checkRateLimit } from "./rate-limit";
+import { rateLimit } from "./rate-limit";
 import type { User } from "@/generated/prisma/client";
 
 export interface ApiAuthError {
@@ -37,9 +37,9 @@ export async function authenticateApiKey(
     return { error: { status: 403, code: "actor_inactive", message: "The key's user is not active." } };
   }
 
-  const rl = checkRateLimit(record.prefix);
+  const rl = rateLimit(record.prefix, { limit: 120, windowMs: 60_000 });
   if (!rl.ok) {
-    return { error: { status: 429, code: "rate_limited", message: `Rate limit exceeded. Retry in ${rl.retryAfter}s.` } };
+    return { error: { status: 429, code: "rate_limited", message: `Rate limit exceeded. Retry in ${Math.ceil(rl.retryAfterMs / 1000)}s.` } };
   }
 
   // Best-effort last-used touch — never blocks or fails the request.
