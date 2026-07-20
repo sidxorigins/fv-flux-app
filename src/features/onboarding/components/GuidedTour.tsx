@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 
 import { completeTour } from "../actions";
 import { tourStore, useTourOpen } from "../useTour";
@@ -105,11 +106,15 @@ export function GuidedTour({ steps, autoStart }: GuidedTourProps) {
   }, [open, next, back, finish]);
 
   if (!open || !step) return null;
+  // Portal to <body> so the fixed overlay escapes any transformed/overflow
+  // ancestor (e.g. DashboardEntrance's entrance transform makes `position:fixed`
+  // resolve against the wrapper, not the viewport, mispositioning the spotlight).
+  if (typeof document === "undefined") return null;
 
   // Popover position: beside the target on the preferred side, clamped to viewport.
   const pop = popoverPosition(rect, step.placement);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100]" role="dialog" aria-modal="true" aria-label="Product tour">
       {/* Spotlight: a box over the target with a giant shadow that dims everything else.
           When there's no target, a plain dim overlay. */}
@@ -158,7 +163,8 @@ export function GuidedTour({ steps, autoStart }: GuidedTourProps) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
