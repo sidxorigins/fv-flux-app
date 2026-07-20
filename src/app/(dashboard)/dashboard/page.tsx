@@ -33,6 +33,9 @@ import { ActivityFeed } from "@/features/dashboard/components/ActivityFeed";
 import { ProjectTiles } from "@/features/dashboard/components/ProjectTiles";
 import { DashboardEntrance } from "@/features/dashboard/components/DashboardEntrance";
 import { CreateTaskDialog } from "@/features/tasks/components";
+import { GuidedTour } from "@/features/onboarding/components/GuidedTour";
+import { dashboardTourSteps } from "@/features/onboarding/steps";
+import { getTourState } from "@/features/onboarding/queries";
 import { cn } from "@/lib/utils";
 
 /** Small-caps muted section heading — the one heading style across the grid. */
@@ -137,6 +140,7 @@ export default async function DashboardPage() {
     inbox,
     creatable,
     loggedHours,
+    tour,
   ] = await Promise.all([
     getKpis(scope),
     getStatusDistribution(scope),
@@ -148,6 +152,7 @@ export default async function DashboardPage() {
     getNotificationsPage({ unreadOnly: true, limit: 5 }),
     getCreatableProjects(),
     getMyLoggedHours(),
+    getTourState(),
   ]);
 
   const completedDelta = kpis.completedThisWeek - kpis.completedLastWeek;
@@ -271,6 +276,11 @@ export default async function DashboardPage() {
           <ProjectTiles tiles={tiles} />
         </section>
       </div>
+
+      <GuidedTour
+        steps={dashboardTourSteps(scope.isAdmin)}
+        autoStart={!tour.completed}
+      />
     </DashboardEntrance>
   );
 }

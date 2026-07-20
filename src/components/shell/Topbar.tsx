@@ -8,6 +8,7 @@ import {
   getUnreadNotificationCount,
 } from "@/features/notifications/queries";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
+import { TakeTourButton } from "@/features/onboarding/components/TakeTourButton";
 import { CommandPalette } from "./CommandPalette";
 import { MobileNav } from "./MobileNav";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -62,6 +63,7 @@ export async function Topbar({ children }: TopbarProps) {
         <div className="min-w-0 flex-1">{children}</div>
 
         <div className="flex shrink-0 items-center gap-2">
+          <TakeTourButton />
           <CommandPalette />
           <NotificationBell
             notifications={notifications}
