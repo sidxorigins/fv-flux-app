@@ -13,13 +13,15 @@ vi.mock("@/lib/permissions", () => {
   }
   return { AuthorizationError, requireAdmin: vi.fn() };
 });
-vi.mock("@/lib/db", () => ({
-  prisma: {
+vi.mock("@/lib/db", () => {
+  const prisma = {
     user: { findUnique: vi.fn() },
-    apiKey: { create: vi.fn(), update: vi.fn() },
+    apiKey: { create: vi.fn(), update: vi.fn(), findUnique: vi.fn() },
     auditLog: { create: vi.fn() },
-  },
-}));
+  } as Record<string, unknown>;
+  prisma.$transaction = vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma));
+  return { prisma };
+});
 
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/permissions";
@@ -27,7 +29,7 @@ import { createApiKey } from "./actions";
 
 const db = prisma as unknown as {
   user: { findUnique: Mock };
-  apiKey: { create: Mock };
+  apiKey: { create: Mock; findUnique: Mock };
   auditLog: { create: Mock };
 };
 const admin = requireAdmin as unknown as Mock;

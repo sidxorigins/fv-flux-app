@@ -37,14 +37,18 @@ API keys are secrets — treat them like passwords. **Never commit keys to versi
 
 ### Key Scope
 
-A key grants access as a specific user across **all projects** that user has access to. The actor's per-project roles (`MEMBER`, `VIEWER`, `MANAGER`) are enforced — a key cannot bypass role restrictions.
+**A key is a global service credential.** A valid, non-revoked key can act on **any project** in the instance, as its actor user — not just projects that user is a member of.
+
+**Per-project roles and memberships are NOT enforced by this API.** Endpoints validate only that the referenced project or task *exists*; they do not check the actor's `ProjectMembership` or `projectRole` (`MEMBER`, `VIEWER`, `MANAGER`) for that project. Every write is attributed to the key's actor user for audit purposes, but the key is not restricted to that user's normal web-app access.
+
+This makes a key powerful: a leaked key can create tasks or log time in **every** project on the instance, regardless of the actor's actual project access. Treat keys accordingly — **mint keys only through an admin**, and **revoke immediately** if a key is ever leaked or exposed.
 
 ---
 
 ## Rate Limits
 
 - **Per-instance limit**: 120 requests per minute (per API key).
-- **Per-request limit**: Requests that exceed per-project rate limits receive a 429 response.
+- **Per-request limit**: Requests that exceed the per-key rate limit receive a 429 response.
 - Rate limit resets on a 60-second sliding window.
 
 ---
@@ -53,7 +57,7 @@ A key grants access as a specific user across **all projects** that user has acc
 
 ### GET /projects
 
-Fetch all projects the authenticated user can access.
+Fetch **all projects** on the instance. A key is a global credential — this is not filtered to projects the actor is a member of (see **Key Scope** above).
 
 **Request:**
 ```bash
@@ -294,8 +298,8 @@ All errors are returned as JSON with `error` and `code` fields:
 
 ```json
 {
-  "error": "Unauthorized",
-  "code": "UNAUTHORIZED"
+  "error": "Missing or malformed API key.",
+  "code": "unauthenticated"
 }
 ```
 
@@ -303,12 +307,16 @@ All errors are returned as JSON with `error` and `code` fields:
 
 | HTTP Status | Code | Meaning |
 |---|---|---|
-| 400 | `BAD_REQUEST` | Malformed request (invalid JSON, missing required field, or invalid input). |
-| 401 | `UNAUTHORIZED` | Missing, invalid, or revoked API key. |
-| 403 | `FORBIDDEN` | Authenticated user is inactive (suspended) or lacks permission for the requested resource. |
-| 404 | `NOT_FOUND` | Resource not found (project, task, or user). |
-| 429 | `RATE_LIMITED` | Request rate limit exceeded. Wait and retry. |
-| 500 | `INTERNAL_ERROR` | Unexpected server error. Contact support if it persists. |
+| 400 | `invalid_json` | Request body is not valid JSON. |
+| 400 | `invalid_input` | Body failed schema validation (Zod). |
+| 400 | `invalid_query` | A required query parameter is missing or malformed (e.g. `projectId`). |
+| 400 | `assignee_not_found` | `POST /tasks` was called with an `assigneeId` that doesn't exist. |
+| 401 | `unauthenticated` | Missing, malformed, or unknown API key. |
+| 401 | `key_revoked` | The API key has been revoked. |
+| 403 | `actor_inactive` | The key's user account is suspended. |
+| 404 | `project_not_found` | The referenced project doesn't exist. |
+| 404 | `task_not_found` | The referenced task doesn't exist. |
+| 429 | `rate_limited` | Request rate limit exceeded. Wait and retry. |
 
 ---
 
