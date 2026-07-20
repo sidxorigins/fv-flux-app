@@ -108,6 +108,7 @@ function Panel({
  */
 export default async function DashboardPage() {
   const scope = await getDashboardScope();
+  const tour = await getTourState();
 
   // No memberships → the CLAUDE.md onboarding empty state, no dead widgets.
   if (scope.projectIds.length === 0) {
@@ -125,6 +126,10 @@ export default async function DashboardPage() {
             activity and charts appear here.
           </p>
         </div>
+        <GuidedTour
+          steps={dashboardTourSteps(scope.isAdmin)}
+          autoStart={!tour.completed}
+        />
       </div>
     );
   }
@@ -140,7 +145,6 @@ export default async function DashboardPage() {
     inbox,
     creatable,
     loggedHours,
-    tour,
   ] = await Promise.all([
     getKpis(scope),
     getStatusDistribution(scope),
@@ -152,7 +156,6 @@ export default async function DashboardPage() {
     getNotificationsPage({ unreadOnly: true, limit: 5 }),
     getCreatableProjects(),
     getMyLoggedHours(),
-    getTourState(),
   ]);
 
   const completedDelta = kpis.completedThisWeek - kpis.completedLastWeek;

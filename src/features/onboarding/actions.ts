@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import { AuthorizationError, requireUser } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 
@@ -17,6 +19,7 @@ export async function completeTour(): Promise<ActionResult> {
       where: { id: user.id },
       data: { tourCompletedAt: new Date() },
     });
+    revalidatePath("/dashboard");
     return { ok: true };
   } catch (err) {
     if (err instanceof AuthorizationError) return { ok: false, error: "Not signed in." };

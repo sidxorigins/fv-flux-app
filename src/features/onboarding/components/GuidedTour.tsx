@@ -34,6 +34,13 @@ export function GuidedTour({ steps, autoStart }: GuidedTourProps) {
     if (autoStart) tourStore.openTour();
   }, [autoStart]);
 
+  // Restore focus to whatever had it before the tour opened, once it closes.
+  React.useEffect(() => {
+    if (!open) return;
+    const prev = document.activeElement as HTMLElement | null;
+    return () => { prev?.focus?.(); };
+  }, [open]);
+
   const step = steps[index];
 
   // Resolve the current target: scroll into view, measure, skip if missing.
@@ -115,7 +122,7 @@ export function GuidedTour({ steps, autoStart }: GuidedTourProps) {
   const pop = popoverPosition(rect, step.placement);
 
   return createPortal(
-    <div className="fixed inset-0 z-[100]" role="dialog" aria-modal="true" aria-label="Product tour">
+    <div className="fixed inset-0 z-[100]" role="dialog" aria-modal="true" aria-labelledby="tour-step-title" aria-describedby="tour-step-body">
       {/* Spotlight: a box over the target with a giant shadow that dims everything else.
           When there's no target, a plain dim overlay. */}
       {rect ? (
@@ -139,8 +146,8 @@ export function GuidedTour({ steps, autoStart }: GuidedTourProps) {
         className="glass fixed w-[min(20rem,calc(100vw-2rem))] p-4 outline-none animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none"
         style={pop}
       >
-        <h2 className="text-sm font-semibold text-foreground">{step.title}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{step.body}</p>
+        <h2 id="tour-step-title" className="text-sm font-semibold text-foreground">{step.title}</h2>
+        <p id="tour-step-body" className="mt-1 text-sm text-muted-foreground">{step.body}</p>
         <div className="mt-4 flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground tabular-nums">
             {index + 1} of {steps.length}
