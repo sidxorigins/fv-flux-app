@@ -87,6 +87,8 @@ model User {
   watchedTasks       TaskWatcher[]
   savedViews         SavedView[]
   timeEntries        TimeEntry[]
+  apiKeys            ApiKey[]            @relation("ApiKeyActor")
+  apiKeysCreated     ApiKey[]            @relation("ApiKeyCreatedBy")
 }
 
 model Project {
@@ -360,4 +362,25 @@ model TimeEntry {
 
   @@index([taskId])
   @@index([userId, endedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agent API keys
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String
+  prefix      String    @unique
+  keyHash     String    @unique
+  userId      String
+  createdById String
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user      User @relation("ApiKeyActor", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User @relation("ApiKeyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([userId])
 }
