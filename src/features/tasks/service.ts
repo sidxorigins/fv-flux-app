@@ -108,15 +108,21 @@ export async function setTaskStatusForActor(
     });
   });
 
-  // Best-effort — notify swallows its own errors and must never fail the update.
-  const audience = await getTaskAudience(taskId);
-  await notify({
-    recipientIds: audience,
-    actorId,
-    type: "TASK_STATUS_CHANGED",
-    taskId,
-    metadata: { from: task.status, to: status },
-  });
+  // Best-effort notify — the status change has already committed, so nothing in
+  // the audience-fetch/notify path may fail the request (notify swallows its own
+  // errors; wrap getTaskAudience too so a read blip can't 500 a done update).
+  try {
+    const audience = await getTaskAudience(taskId);
+    await notify({
+      recipientIds: audience,
+      actorId,
+      type: "TASK_STATUS_CHANGED",
+      taskId,
+      metadata: { from: task.status, to: status },
+    });
+  } catch (err) {
+    console.error("[setTaskStatusForActor] notify failed", err);
+  }
 
   return { id: task.id, key: task.key, status };
 }
