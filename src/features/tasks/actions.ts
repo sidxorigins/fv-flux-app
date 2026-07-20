@@ -23,6 +23,7 @@ import {
   needsRebalance,
   rebalancedPositions,
 } from "./positioning";
+import { createTaskCore } from "./service";
 import {
   createTaskSchema,
   deleteTaskSchema,
@@ -211,47 +212,18 @@ export async function createTask(
       }
       if (labelIds?.length) await assertLabelsInProject(tx, projectId, labelIds);
 
-      // Atomic counter bump → the returned value is unique per project (row-locked).
-      const project = await tx.project.update({
-        where: { id: projectId },
-        data: { taskCounter: { increment: 1 } },
-        select: { key: true, taskCounter: true },
+      return createTaskCore(tx, user.id, {
+        projectId,
+        title,
+        type,
+        status,
+        priority,
+        assigneeId,
+        description,
+        parentId,
+        dueDate,
+        labelIds,
       });
-      const key = `${project.key}-${project.taskCounter}`;
-
-      // Place at the bottom of the destination status column.
-      const agg = await tx.task.aggregate({
-        where: { projectId, status },
-        _max: { position: true },
-      });
-      const position = computeMidpoint(agg._max.position ?? null, null);
-
-      const created = await tx.task.create({
-        data: {
-          projectId,
-          key,
-          title,
-          description: description ? sanitizeRichText(description) : null,
-          type,
-          status,
-          priority,
-          assigneeId: assigneeId ?? null,
-          reporterId: user.id,
-          parentId: parentId ?? null,
-          position,
-          dueDate: dueDate ?? null,
-          ...(labelIds?.length
-            ? { labels: { connect: labelIds.map((id) => ({ id })) } }
-            : {}),
-        },
-        select: { id: true, key: true },
-      });
-
-      await tx.activityLog.create({
-        data: { taskId: created.id, actorId: user.id, action: "created" },
-      });
-
-      return created;
     });
 
     if (assigneeId) {
