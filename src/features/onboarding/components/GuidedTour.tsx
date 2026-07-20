@@ -81,8 +81,15 @@ export function GuidedTour({ steps, autoStart }: GuidedTourProps) {
   }, []);
 
   const next = React.useCallback(() => {
-    setIndex((i) => (i >= steps.length - 1 ? (finish(), 0) : i + 1));
-  }, [steps.length, finish]);
+    // Compute last-step OUTSIDE the setIndex updater: updaters must be pure, and
+    // React 19 Strict Mode double-invokes them — calling finish() (which fires
+    // completeTour()) from inside would double-fire it. Call it from the handler.
+    if (index >= steps.length - 1) {
+      finish();
+      return;
+    }
+    setIndex((i) => i + 1);
+  }, [index, steps.length, finish]);
   const back = React.useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
 
   // Keyboard.
@@ -109,7 +116,7 @@ export function GuidedTour({ steps, autoStart }: GuidedTourProps) {
       {rect ? (
         <div
           aria-hidden
-          className="pointer-events-none fixed rounded-xl ring-2 ring-primary transition-[top,left,width,height] duration-150 motion-reduce:transition-none"
+          className="pointer-events-none fixed rounded-xl ring-2 ring-primary"
           style={{
             top: rect.top - PAD, left: rect.left - PAD,
             width: rect.width + PAD * 2, height: rect.height + PAD * 2,
