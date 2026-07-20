@@ -166,6 +166,37 @@ curl -X POST \
 
 ---
 
+### PATCH /tasks/{id}
+
+Update a task's status. Attributed to the key's actor user. Global scope — any task.
+
+**Request Body:**
+- `status` (string, required): One of `TODO`, `IN_PROGRESS`, `IN_REVIEW`, `DONE`.
+
+**Response (200 OK):**
+```json
+{
+  "task": {
+    "id": "task_999",
+    "key": "OPS-99",
+    "status": "DONE"
+  }
+}
+```
+
+**curl:**
+```bash
+curl -s -X PATCH \
+  -H "Authorization: Bearer flux_sk_YOUR_KEY_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"DONE"}' \
+  https://flux.foodverse.io/api/v1/tasks/task_999
+```
+
+Errors: `404 task_not_found` (no such task), `400 invalid_input` (unknown status value), `400 invalid_json`.
+
+---
+
 ### POST /time
 
 Log time spent on a task (completed work entry — **recommended for agents**).

@@ -3,9 +3,11 @@
 // CALLER's responsibility — this only mints the key, places the card, creates the row,
 // and logs the activity, all on the passed transaction client.
 
+import { prisma } from "@/lib/db";
 import { sanitizeRichText } from "@/lib/sanitize";
 import type { Prisma } from "@/generated/prisma/client";
 import type { TaskType, TaskStatus, TaskPriority } from "@/generated/prisma/enums";
+import { getTaskAudience, notify } from "@/features/notifications/service";
 import { computeMidpoint } from "./positioning";
 
 export interface CreateTaskCoreInput {
@@ -70,4 +72,51 @@ export async function createTaskCore(
     data: { taskId: created.id, actorId, action: "created" },
   });
   return created;
+}
+
+/**
+ * Set a task's status on behalf of an actor (the agent-API path — no session,
+ * caller has already authorised). Updates the status, writes a "status_changed"
+ * ActivityLog row (in one transaction), and best-effort notifies the task's
+ * audience — mirroring the `updateTaskStatus` Server Action. Returns null if the
+ * task doesn't exist; a no-op (but still returns the task) when the status is
+ * unchanged.
+ */
+export async function setTaskStatusForActor(
+  actorId: string,
+  taskId: string,
+  status: TaskStatus,
+): Promise<{ id: string; key: string; status: TaskStatus } | null> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { id: true, key: true, status: true },
+  });
+  if (!task) return null;
+  if (task.status === status) return { id: task.id, key: task.key, status };
+
+  await prisma.$transaction(async (tx) => {
+    await tx.task.update({ where: { id: taskId }, data: { status } });
+    await tx.activityLog.create({
+      data: {
+        taskId,
+        actorId,
+        action: "status_changed",
+        field: "status",
+        oldValue: task.status,
+        newValue: status,
+      },
+    });
+  });
+
+  // Best-effort — notify swallows its own errors and must never fail the update.
+  const audience = await getTaskAudience(taskId);
+  await notify({
+    recipientIds: audience,
+    actorId,
+    type: "TASK_STATUS_CHANGED",
+    taskId,
+    metadata: { from: task.status, to: status },
+  });
+
+  return { id: task.id, key: task.key, status };
 }

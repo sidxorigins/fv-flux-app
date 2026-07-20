@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TaskType, TaskPriority } from "@/generated/prisma/enums";
+import { TaskType, TaskStatus, TaskPriority } from "@/generated/prisma/enums";
 
 const id = z.string().min(1);
 
@@ -18,6 +18,8 @@ export const apiLogTimeSchema = z.object({
   note: z.string().max(1000).optional(),
   spentAt: z.coerce.date().optional(),
 });
+
+export const apiUpdateTaskStatusSchema = z.object({ status: z.enum(TaskStatus) });
 
 export const apiStartTimerSchema = z.object({ taskId: id });
 export const apiListTasksQuerySchema = z.object({ projectId: id });
