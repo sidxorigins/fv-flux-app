@@ -1,12 +1,22 @@
 import { prisma } from "@/lib/db";
 import { hashApiKey, API_KEY_PREFIX } from "./api-key";
 import { rateLimit } from "./rate-limit";
-import type { User } from "@/generated/prisma/client";
+import type { UserStatus } from "@/generated/prisma/enums";
 
 export interface ApiAuthError {
   status: 401 | 403 | 429;
   code: string;
   message: string;
+}
+
+/**
+ * The actor attribution identity behind a key — deliberately NARROW: only the
+ * fields the API needs. Never the full `User` row (which carries `hashedPassword`
+ * — see CLAUDE.md "password hashes must never reach the client").
+ */
+export interface ApiActor {
+  id: string;
+  status: UserStatus;
 }
 
 /**
@@ -16,7 +26,7 @@ export interface ApiAuthError {
  */
 export async function authenticateApiKey(
   request: Request,
-): Promise<{ actor: User } | { error: ApiAuthError }> {
+): Promise<{ actor: ApiActor } | { error: ApiAuthError }> {
   const header = request.headers.get("authorization") ?? "";
   const key = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!key.startsWith(API_KEY_PREFIX)) {
@@ -25,7 +35,8 @@ export async function authenticateApiKey(
 
   const record = await prisma.apiKey.findUnique({
     where: { keyHash: hashApiKey(key) },
-    select: { id: true, prefix: true, revokedAt: true, user: true },
+    // Narrow user select — never pull hashedPassword/email into the actor.
+    select: { id: true, prefix: true, revokedAt: true, user: { select: { id: true, status: true } } },
   });
   if (!record) {
     return { error: { status: 401, code: "unauthenticated", message: "Invalid API key." } };

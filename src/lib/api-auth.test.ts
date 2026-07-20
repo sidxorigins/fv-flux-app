@@ -42,6 +42,12 @@ describe("authenticateApiKey", () => {
     const r = await authenticateApiKey(req(`Bearer ${generateApiKey().key}`));
     expect("error" in r && r.error.status).toBe(403);
   });
+  it("429 when rate limited", async () => {
+    findUnique.mockResolvedValue({ id: "k", prefix: "p", revokedAt: null, user: { id: "u1", status: "ACTIVE" } });
+    (rateLimit as unknown as Mock).mockReturnValue({ ok: false, retryAfterMs: 5000, remaining: 0 });
+    const r = await authenticateApiKey(req(`Bearer ${generateApiKey().key}`));
+    expect("error" in r && r.error.status).toBe(429);
+  });
   it("returns the actor on a valid key", async () => {
     const user = { id: "u1", status: "ACTIVE" };
     findUnique.mockResolvedValue({ id: "k", prefix: "p", revokedAt: null, user });
