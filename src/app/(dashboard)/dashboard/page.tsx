@@ -160,12 +160,12 @@ export default async function DashboardPage() {
             Dashboard
           </h1>
           {creatable.length > 0 ? (
-            <CreateTaskDialog projects={creatable} />
+            <span data-tour="create-task"><CreateTaskDialog projects={creatable} /></span>
           ) : null}
         </div>
 
         {/* KPI row — glass stat cards, real numbers from first paint */}
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-tour="dashboard-kpis">
           <KpiCard
             label="My open tasks"
             value={kpis.openAssigned}
@@ -207,21 +207,23 @@ export default async function DashboardPage() {
         {/* Main bento: 2/3 work + trends, 1/3 inbox + distribution + activity */}
         <div className="grid items-start gap-4 lg:grid-cols-3">
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
-            <Panel
-              title="My work"
-              scope="you"
-              action={
-                <Link
-                  href="/tasks"
-                  className="text-primary hover:text-primary-hover focus-visible:ring-ring/50 flex items-center gap-1 rounded text-xs font-medium outline-none focus-visible:ring-2"
-                >
-                  View all
-                  <ArrowRight aria-hidden className="size-3" />
-                </Link>
-              }
-            >
-              <GroupedWorkList work={work} />
-            </Panel>
+            <div data-tour="dashboard-mywork">
+              <Panel
+                title="My work"
+                scope="you"
+                action={
+                  <Link
+                    href="/tasks"
+                    className="text-primary hover:text-primary-hover focus-visible:ring-ring/50 flex items-center gap-1 rounded text-xs font-medium outline-none focus-visible:ring-2"
+                  >
+                    View all
+                    <ArrowRight aria-hidden className="size-3" />
+                  </Link>
+                }
+              >
+                <GroupedWorkList work={work} />
+              </Panel>
+            </div>
 
             <Panel title="Throughput — completed per week" scope="team">
               <ThroughputArea data={throughput} />

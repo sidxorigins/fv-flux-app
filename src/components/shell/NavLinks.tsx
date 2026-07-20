@@ -17,16 +17,17 @@ interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  tourId: string;
 }
 
 const BASE_NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/tasks", label: "My Tasks", icon: ListTodo },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tourId: "nav-dashboard" },
+  { href: "/inbox", label: "Inbox", icon: Inbox, tourId: "nav-inbox" },
+  { href: "/projects", label: "Projects", icon: FolderKanban, tourId: "nav-projects" },
+  { href: "/tasks", label: "My Tasks", icon: ListTodo, tourId: "nav-tasks" },
 ];
 
-const ADMIN_NAV_ITEM: NavItem = { href: "/admin", label: "Admin", icon: Shield };
+const ADMIN_NAV_ITEM: NavItem = { href: "/admin", label: "Admin", icon: Shield, tourId: "nav-admin" };
 
 /**
  * Primary navigation — the only client piece of the sidebar (active state
@@ -47,7 +48,7 @@ export function NavLinks({
 
   return (
     <nav aria-label="Primary" className="flex flex-col gap-1">
-      {items.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, icon: Icon, tourId }) => {
         const active = pathname === href || pathname.startsWith(`${href}/`);
         const showBadge = href === "/inbox" && unreadCount > 0;
 
@@ -55,6 +56,7 @@ export function NavLinks({
           <Link
             key={href}
             href={href}
+            data-tour={tourId}
             aria-current={active ? "page" : undefined}
             className={cn(
               "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium",
