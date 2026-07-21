@@ -119,6 +119,9 @@ beforeEach(() => {
   db.auditLog.create.mockResolvedValue({});
   mockRecomputeMembership.mockResolvedValue(undefined);
   mockRecomputeForTeam.mockResolvedValue(undefined);
+  // assignTeamManager reads the team's projects to recompute a demoted former
+  // manager — default to no projects so unrelated tests don't hit undefined.
+  db.teamProject.findMany.mockResolvedValue([]);
 });
 
 describe("addProjectMember", () => {
@@ -513,5 +516,24 @@ describe("assignTeamManager", () => {
       data: { managerId: null },
     });
     expect(mockRecomputeForTeam).toHaveBeenCalledWith(db, TEAM_ID);
+  });
+
+  it("recomputes the FORMER manager across the team's projects on a manager change", async () => {
+    const FORMER = "former-manager";
+    db.team.findUnique.mockResolvedValue({ id: TEAM_ID, managerId: FORMER });
+    db.user.findUnique.mockResolvedValue({ id: USER_ID, status: "ACTIVE" });
+    db.team.update.mockResolvedValue({});
+    db.teamProject.findMany.mockResolvedValue([
+      { projectId: "p1" },
+      { projectId: "p2" },
+    ]);
+
+    const result = await assignTeamManager({ teamId: TEAM_ID, managerId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    // The demoted former manager must be re-evaluated so stale MANAGER-derived
+    // access is stripped (recomputeForTeam alone only covers the current set).
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p1", FORMER);
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p2", FORMER);
   });
 });

@@ -803,6 +803,7 @@ export async function assignTeamManager(input: unknown): Promise<ActionResult> {
 
     const team = await prisma.team.findUnique({ where: { id: teamId } });
     if (!team) return { ok: false, error: "Team not found." };
+    const previousManagerId = team.managerId;
 
     if (managerId !== null) {
       const target = await prisma.user.findUnique({ where: { id: managerId } });
@@ -815,6 +816,19 @@ export async function assignTeamManager(input: unknown): Promise<ActionResult> {
     await prisma.$transaction(async (tx) => {
       await tx.team.update({ where: { id: teamId }, data: { managerId } });
       await recomputeForTeam(tx, teamId);
+      // recomputeForTeam only recomputes the CURRENT manager+members; a demoted
+      // former manager is no longer in that set, so recompute them explicitly to
+      // strip any MANAGER-derived access on the team's projects (unless still
+      // justified elsewhere).
+      if (previousManagerId && previousManagerId !== managerId) {
+        const teamProjects = await tx.teamProject.findMany({
+          where: { teamId },
+          select: { projectId: true },
+        });
+        for (const { projectId } of teamProjects) {
+          await recomputeMembership(tx, projectId, previousManagerId);
+        }
+      }
       await tx.auditLog.create({
         data: {
           actorId: admin.id,
