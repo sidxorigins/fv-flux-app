@@ -17,6 +17,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { deleteObjects } from "@/lib/r2";
+import { recomputeMembership } from "@/lib/access-sync";
 import {
   AuthorizationError,
   requireAdmin,
@@ -123,14 +124,24 @@ export async function createProject(
         select: { id: true, key: true },
       });
 
-      // Unique userIds → one MANAGER membership each (creator + lead).
+      // Unique userIds → one MANAGER membership each (creator + lead). manualRole
+      // marks these as structural admin/creator grants (not team/lead-derived) so
+      // recomputeMembership preserves them instead of deleting them later.
       const managerIds = [...new Set([creator.id, resolvedLeadId])];
       await tx.projectMembership.createMany({
         data: managerIds.map((userId) => ({
           projectId: created.id,
           userId,
           projectRole: "MANAGER" as const,
+          manualRole: "MANAGER" as const,
         })),
+      });
+
+      // Track the primary lead in ProjectLead too, like backfilled projects, so
+      // recompute's `leadId === user OR a ProjectLead row` MANAGER source is
+      // consistent for every project regardless of when it was created.
+      await tx.projectLead.create({
+        data: { projectId: created.id, userId: resolvedLeadId },
       });
 
       await tx.auditLog.create({
@@ -164,10 +175,11 @@ export async function createProject(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Update a project's name / description / lead. Changing the lead is audited. To
- * avoid handing the project to a lead who can't see it, a new lead without a
- * membership is granted MANAGER access; an existing membership is left untouched
- * (we never silently downgrade a member's role here).
+ * Update a project's name / description / lead. Changing the lead is audited and
+ * routed through the access-sync engine (same approach as `setPrimaryLead`): the
+ * new lead gets a `ProjectLead` row and is recomputed (gaining MANAGER via
+ * `leadId === user`), and the former primary is recomputed too so stale
+ * MANAGER-derived access is stripped unless they remain a co-lead.
  */
 export async function updateProject(
   projectId: string,
@@ -200,16 +212,13 @@ export async function updateProject(
         if (!newLead || newLead.status !== "ACTIVE") {
           throw new ActionError("The selected project lead is not a valid user.");
         }
-        // Ensure the new lead can access the project; don't disturb an existing role.
-        const existing = await tx.projectMembership.findUnique({
+        // Ensure the new lead has a ProjectLead row (so they remain a co-lead if
+        // later demoted from primary) — same approach as setPrimaryLead.
+        await tx.projectLead.upsert({
           where: { projectId_userId: { projectId, userId: data.leadId! } },
-          select: { id: true },
+          update: {},
+          create: { projectId, userId: data.leadId! },
         });
-        if (!existing) {
-          await tx.projectMembership.create({
-            data: { projectId, userId: data.leadId!, projectRole: "MANAGER" },
-          });
-        }
       }
 
       await tx.project.update({
@@ -224,6 +233,15 @@ export async function updateProject(
       });
 
       if (leadChanged) {
+        // Route the effective-access change through the recompute engine instead
+        // of ad-hoc membership writes: the new lead gains MANAGER via
+        // `leadId === user`, and the former primary is recomputed so any now-
+        // unjustified MANAGER-derived access is stripped (unless they still hold
+        // a ProjectLead row as a co-lead — matches setPrimaryLead exactly; the
+        // former primary is NOT auto-removed as a co-lead).
+        await recomputeMembership(tx, projectId, data.leadId!);
+        await recomputeMembership(tx, projectId, current.leadId);
+
         await tx.auditLog.create({
           data: {
             actorId: user.id,

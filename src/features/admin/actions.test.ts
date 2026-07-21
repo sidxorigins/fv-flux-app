@@ -590,9 +590,20 @@ describe("addTeamMember", () => {
     expect(db.teamMembership.create).not.toHaveBeenCalled();
   });
 
+  it("rejects a non-ACTIVE target user", async () => {
+    db.team.findUnique.mockResolvedValue({ id: TEAM_ID });
+    db.user.findUnique.mockResolvedValue({ id: USER_ID, status: "SUSPENDED" });
+
+    const result = await addTeamMember({ teamId: TEAM_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "Member must be an active user." });
+    expect(db.teamMembership.create).not.toHaveBeenCalled();
+    expect(mockRecomputeMembership).not.toHaveBeenCalled();
+  });
+
   it("is idempotent when the user is already a member", async () => {
     db.team.findUnique.mockResolvedValue({ id: TEAM_ID });
-    db.user.findUnique.mockResolvedValue({ id: USER_ID });
+    db.user.findUnique.mockResolvedValue({ id: USER_ID, status: "ACTIVE" });
     db.teamMembership.findUnique.mockResolvedValue({ id: "existing-row" });
 
     const result = await addTeamMember({ teamId: TEAM_ID, userId: USER_ID });
@@ -605,7 +616,7 @@ describe("addTeamMember", () => {
 
   it("creates the TeamMembership, recomputes the new member across the team's projects, and audits team.member_added", async () => {
     db.team.findUnique.mockResolvedValue({ id: TEAM_ID });
-    db.user.findUnique.mockResolvedValue({ id: USER_ID });
+    db.user.findUnique.mockResolvedValue({ id: USER_ID, status: "ACTIVE" });
     db.teamMembership.findUnique.mockResolvedValue(null);
     db.teamMembership.create.mockResolvedValue({});
     db.teamProject.findMany.mockResolvedValue([

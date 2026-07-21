@@ -887,6 +887,9 @@ export async function addTeamMember(input: unknown): Promise<ActionResult> {
     ]);
     if (!team) return { ok: false, error: "Team not found." };
     if (!target) return { ok: false, error: "User not found." };
+    if (target.status !== "ACTIVE") {
+      return { ok: false, error: "Member must be an active user." };
+    }
 
     const existing = await prisma.teamMembership.findUnique({
       where: { teamId_userId: { teamId, userId } },
