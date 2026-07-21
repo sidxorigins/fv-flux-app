@@ -33,6 +33,7 @@ import type { CommentWithAuthor } from "../types";
 import { deleteComment, updateComment } from "../actions";
 import { extractInlineImageIds, hasCommentContent } from "../text";
 import { uploadCommentFile } from "../upload";
+import { CommentReactions } from "./CommentReactions";
 import { TimeAgo } from "./TimeAgo";
 
 function initialsOf(name: string): string {
@@ -270,6 +271,7 @@ export function CommentItem({
                 })}
               </ul>
             ) : null}
+            <CommentReactions commentId={comment.id} reactions={comment.reactions} />
           </>
         )}
       </div>
