@@ -334,6 +334,125 @@ export async function getProjectMembers(
   };
 }
 
+// ── Teams (Teams Org Foundation) ───────────────────────────────────────────
+export interface AdminTeamRow {
+  id: string;
+  name: string;
+  isActive: boolean;
+  managerName: string | null;
+  memberCount: number;
+  projectCount: number;
+}
+
+export async function getTeams(): Promise<AdminTeamRow[]> {
+  await requireAdmin();
+  const teams = await prisma.team.findMany({
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+      manager: { select: { name: true } },
+      _count: { select: { members: true, projects: true } },
+    },
+  });
+  return teams.map((t) => ({
+    id: t.id,
+    name: t.name,
+    isActive: t.isActive,
+    managerName: t.manager?.name ?? null,
+    memberCount: t._count.members,
+    projectCount: t._count.projects,
+  }));
+}
+
+export interface AdminTeamMember {
+  userId: string;
+  name: string;
+  username: string;
+}
+
+export interface AdminTeamProject {
+  projectId: string;
+  key: string;
+  name: string;
+  role: ProjectRole;
+  leads: string[];
+}
+
+export interface AdminTeamDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  managerId: string | null;
+  managerName: string | null;
+  members: AdminTeamMember[];
+  projects: AdminTeamProject[];
+}
+
+export async function getTeam(teamId: string): Promise<AdminTeamDetail | null> {
+  await requireAdmin();
+
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      isActive: true,
+      managerId: true,
+      manager: { select: { name: true } },
+      members: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          user: { select: { id: true, name: true, username: true } },
+        },
+      },
+      projects: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          role: true,
+          project: {
+            select: {
+              id: true,
+              key: true,
+              name: true,
+              lead: { select: { name: true } },
+              additionalLeads: { select: { user: { select: { name: true } } } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!team) return null;
+
+  return {
+    id: team.id,
+    name: team.name,
+    description: team.description,
+    isActive: team.isActive,
+    managerId: team.managerId,
+    managerName: team.manager?.name ?? null,
+    members: team.members.map((m) => ({
+      userId: m.user.id,
+      name: m.user.name,
+      username: m.user.username,
+    })),
+    projects: team.projects.map((tp) => ({
+      projectId: tp.project.id,
+      key: tp.project.key,
+      name: tp.project.name,
+      role: tp.role,
+      leads: [
+        tp.project.lead.name,
+        ...tp.project.additionalLeads.map((l) => l.user.name),
+      ],
+    })),
+  };
+}
+
 // ── Audit log ───────────────────────────────────────────────────────────────
 export interface AdminAuditRow {
   id: string;

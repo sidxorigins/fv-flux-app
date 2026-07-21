@@ -17,7 +17,7 @@
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/db";
-import { recomputeMembership } from "@/lib/access-sync";
+import { recomputeForTeam, recomputeMembership } from "@/lib/access-sync";
 import {
   AuthorizationError,
   requireAdmin,
@@ -28,7 +28,9 @@ import { sendInviteEmail } from "@/lib/mail";
 import { generateInviteToken, hashToken } from "@/lib/tokens";
 
 import {
+  assignTeamManagerSchema,
   changeGlobalRoleSchema,
+  createTeamSchema,
   createUserSchema,
   inviteIdSchema,
   membershipSchema,
@@ -36,6 +38,7 @@ import {
   sendInviteSchema,
   setUserStatusSchema,
   updateMembershipSchema,
+  updateTeamSchema,
 } from "./schemas";
 
 export type ActionResult<T = undefined> =
@@ -674,6 +677,157 @@ export async function removeProjectMember(input: unknown): Promise<ActionResult>
     });
 
     revalidateMembership(projectId, userId);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err) };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Teams (Teams Org Foundation — Admin-only CRUD; member/project assignment and
+// delegated manager actions land in later Phase B tasks)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Create a team. */
+export async function createTeam(
+  input: unknown,
+): Promise<ActionResult<{ teamId: string }>> {
+  try {
+    const admin = await requireAdmin();
+
+    const parsed = createTeamSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: parsed.error.issues[0]?.message ?? "Invalid input",
+      };
+    }
+    const { name, description } = parsed.data;
+
+    const team = await prisma.$transaction(async (tx) => {
+      const created = await tx.team.create({ data: { name, description } });
+      await tx.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: "team.created",
+          targetType: "Team",
+          targetId: created.id,
+          metadata: { name, description: description ?? null },
+        },
+      });
+      return created;
+    });
+
+    revalidatePath("/admin/teams");
+    return { ok: true, data: { teamId: team.id } };
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err) };
+  }
+}
+
+/**
+ * Update a team's name/description/isActive. Toggling `isActive` writes
+ * `team.activated`/`team.deactivated` (otherwise `team.updated`) and triggers a
+ * recompute, since an inactive team grants no derived project access (see
+ * access-sync.recomputeMembership, which filters `team: { isActive: true }`).
+ */
+export async function updateTeam(input: unknown): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+
+    const parsed = updateTeamSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: parsed.error.issues[0]?.message ?? "Invalid input",
+      };
+    }
+    const { teamId, name, description, isActive } = parsed.data;
+
+    const existing = await prisma.team.findUnique({ where: { id: teamId } });
+    if (!existing) return { ok: false, error: "Team not found." };
+
+    const isActiveChanged =
+      isActive !== undefined && isActive !== existing.isActive;
+
+    const data: { name?: string; description?: string | null; isActive?: boolean } = {};
+    if (name !== undefined) data.name = name;
+    if (description !== undefined) data.description = description;
+    if (isActive !== undefined) data.isActive = isActive;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.team.update({ where: { id: teamId }, data });
+      if (isActiveChanged) {
+        await recomputeForTeam(tx, teamId);
+      }
+      await tx.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: isActiveChanged
+            ? isActive
+              ? "team.activated"
+              : "team.deactivated"
+            : "team.updated",
+          targetType: "Team",
+          targetId: teamId,
+          metadata: { name, description, isActive },
+        },
+      });
+    });
+
+    revalidatePath("/admin/teams");
+    revalidatePath(`/admin/teams/${teamId}`);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err) };
+  }
+}
+
+/**
+ * Assign (or clear, with `managerId: null`) a team's manager. Recomputes access
+ * for the team so the manager's own MANAGER-level access to the team's projects
+ * takes effect immediately.
+ */
+export async function assignTeamManager(input: unknown): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+
+    const parsed = assignTeamManagerSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: parsed.error.issues[0]?.message ?? "Invalid input",
+      };
+    }
+    const { teamId, managerId } = parsed.data;
+
+    const team = await prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) return { ok: false, error: "Team not found." };
+
+    if (managerId !== null) {
+      const target = await prisma.user.findUnique({ where: { id: managerId } });
+      if (!target) return { ok: false, error: "User not found." };
+      if (target.status !== "ACTIVE") {
+        return { ok: false, error: "Manager must be an active user." };
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.team.update({ where: { id: teamId }, data: { managerId } });
+      await recomputeForTeam(tx, teamId);
+      await tx.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: "team.manager_assigned",
+          targetType: "Team",
+          targetId: teamId,
+          metadata: { teamId, managerId },
+        },
+      });
+    });
+
+    revalidatePath("/admin/teams");
+    revalidatePath(`/admin/teams/${teamId}`);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: friendlyAuthError(err) };
