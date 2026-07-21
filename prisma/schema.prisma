@@ -94,6 +94,7 @@ model User {
   managedTeams       Team[]              @relation("TeamManager")
   teamMemberships    TeamMembership[]
   projectLeads       ProjectLead[]
+  savedFilters       SavedFilter[]
 }
 
 model Project {
@@ -463,5 +464,26 @@ model ProjectLead {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@unique([projectId, userId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task Explorer (#3) — global saved filters
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Per-user, global (no projectId) saved filter combo for /explore — the
+// cross-project analog of SavedView. Owner-only: only the creating user can
+// see or delete their own SavedFilter rows (enforced in the actions, not here).
+model SavedFilter {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  // Serialised URL search string of the explorer's filters, applied verbatim
+  // as `?<query>` when selected — same convention as SavedView.query.
+  query     String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }

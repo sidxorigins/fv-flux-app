@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Compass,
   FolderKanban,
   Inbox,
   LayoutDashboard,
@@ -27,6 +28,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { href: "/inbox", label: "Inbox", icon: Inbox, tourId: "nav-inbox" },
   { href: "/projects", label: "Projects", icon: FolderKanban, tourId: "nav-projects" },
   { href: "/tasks", label: "My Tasks", icon: ListTodo, tourId: "nav-tasks" },
+  { href: "/explore", label: "Explore", icon: Compass, tourId: "nav-explore" },
 ];
 
 const MANAGER_NAV_ITEM: NavItem = { href: "/manager", label: "Manager", icon: Users, tourId: "nav-manager" };
