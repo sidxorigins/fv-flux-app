@@ -20,9 +20,11 @@ import { NavLinks } from "./NavLinks";
  */
 export function MobileNav({
   isAdmin = false,
+  showManager = false,
   unreadCount = 0,
 }: {
   isAdmin?: boolean;
+  showManager?: boolean;
   unreadCount?: number;
 }) {
   const [open, setOpen] = useState(false);
@@ -58,7 +60,7 @@ export function MobileNav({
             </span>
           </SheetTitle>
         </SheetHeader>
-        <NavLinks isAdmin={isAdmin} unreadCount={unreadCount} />
+        <NavLinks isAdmin={isAdmin} showManager={showManager} unreadCount={unreadCount} />
       </SheetContent>
     </Sheet>
   );

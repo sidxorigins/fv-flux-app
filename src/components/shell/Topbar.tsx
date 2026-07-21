@@ -2,6 +2,7 @@ import Link from "next/link";
 import { LogOut, UserRound } from "lucide-react";
 
 import { auth, signOut } from "@/lib/auth";
+import { isManagerOfAnyTeam } from "@/lib/permissions";
 import { getMyProfile } from "@/features/users/queries";
 import {
   getMyNotifications,
@@ -55,11 +56,15 @@ export async function Topbar({ children }: TopbarProps) {
     getUnreadNotificationCount(),
   ]);
   const isAdmin = session?.user?.globalRole === "ADMIN";
+  const userId = session?.user?.id;
+  // /manager is server-guarded regardless (isManagerOfAnyTeam || admin) —
+  // this only hides the link from users who couldn't use it anyway.
+  const showManager = isAdmin || (userId ? await isManagerOfAnyTeam(userId) : false);
 
   return (
     <header className="sticky top-0 z-40 px-4 pt-3 sm:px-6 lg:px-8">
       <div className="glass flex h-14 items-center justify-between gap-4 px-3 sm:px-4">
-        <MobileNav isAdmin={isAdmin} unreadCount={unreadCount} />
+        <MobileNav isAdmin={isAdmin} showManager={showManager} unreadCount={unreadCount} />
         <div className="min-w-0 flex-1">{children}</div>
 
         <div className="flex shrink-0 items-center gap-2">
