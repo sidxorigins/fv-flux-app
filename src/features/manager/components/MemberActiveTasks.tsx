@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 import type { MemberActiveTasks as MemberTasks } from "@/features/manager/queries";
@@ -11,9 +12,11 @@ import { cn } from "@/lib/utils";
  * THE headline widget: every member the manager oversees, collapsed to a
  * name + active-count row by default, expanding to a dense table of their
  * complete non-DONE task list. Client only for the expand/collapse state —
- * the data itself is server-fetched and passed in whole. Rows never link out
- * (the query intentionally omits projectId — task keys/titles are enough to
- * scan); this stays a read-only overview, not a navigation surface.
+ * the data itself is server-fetched and passed in whole. Each row's key links
+ * out to `/projects/<projectId>?task=<id>` — the same permission-gated deep
+ * link the rest of the app uses to open a task (see `MyWorkList`/
+ * `ActivityFeed`) — so a manager can jump straight from "who's behind" to the
+ * task itself.
  *
  * Collapse state is local (not persisted) — reopening the page always starts
  * collapsed, which keeps the page short and scannable for a manager with
@@ -126,10 +129,19 @@ export function MemberActiveTasks({
                           return (
                             <tr
                               key={task.id}
-                              className="border-border/60 last:border-b-0 border-b"
+                              className="border-border/60 hover:bg-surface-raised/70 last:border-b-0 border-b transition-colors duration-150 motion-reduce:transition-none"
                             >
-                              <td className="text-muted-foreground px-2.5 py-1.5 font-mono whitespace-nowrap">
-                                {task.key}
+                              <td className="px-2.5 py-1.5 font-mono whitespace-nowrap">
+                                <Link
+                                  href={`/projects/${task.projectId}?task=${task.id}`}
+                                  className={cn(
+                                    "text-muted-foreground hover:text-primary rounded outline-none",
+                                    "focus-visible:ring-ring/50 focus-visible:ring-2",
+                                    "underline-offset-2 hover:underline",
+                                  )}
+                                >
+                                  {task.key}
+                                </Link>
                               </td>
                               <td className="text-foreground max-w-64 truncate px-2.5 py-1.5">
                                 {task.title}

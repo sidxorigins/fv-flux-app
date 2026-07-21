@@ -304,6 +304,8 @@ export interface ManagerActiveTask {
   id: string;
   key: string;
   title: string;
+  /** Needed to build the deep link into the project board (`/projects/<id>?task=<id>`). */
+  projectId: string;
   projectKey: string;
   status: TaskStatus;
   priority: TaskPriority;
@@ -355,6 +357,7 @@ export async function getManagerActiveTasksByMember(
         dueDate: true,
         estimatedHours: true,
         assigneeId: true,
+        projectId: true,
         project: { select: { key: true } },
       },
     }),
@@ -380,6 +383,7 @@ export async function getManagerActiveTasksByMember(
       id: t.id,
       key: t.key,
       title: t.title,
+      projectId: t.projectId,
       projectKey: t.project.key,
       status: t.status,
       priority: t.priority,
@@ -492,4 +496,86 @@ export async function getManagerTeamActivity(
       },
     })),
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Team delegation (Task C3): a manager manages their own team's membership
+// without needing global Admin / `/admin` access. Reuses the EXISTING
+// `addTeamMember`/`removeTeamMember` Server Actions (`@/features/admin/actions`)
+// — they already authorise via `requireTeamManage` (Admin OR the team's own
+// manager) — these two queries only supply the read side: which teams the
+// manager can edit, and which active users are pickable to add.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Minimal user for the manager's "add member" picker — names only, no
+ * email/role/status leak (a manager doesn't need admin-level user detail to
+ * pick someone to add to their own team). */
+export interface ManagerAssignableUser {
+  id: string;
+  name: string;
+  username: string;
+}
+
+/**
+ * Active users a manager can add to a team they manage. Low-sensitivity by
+ * design: any signed-in user may resolve this list (gated by `requireUser`,
+ * not `requireTeamManage`) since it leaks nothing beyond a name + username —
+ * the actual mutation (`addTeamMember`) still re-authorises per-team on the
+ * server.
+ */
+export async function listAssignableUsersForManager(): Promise<ManagerAssignableUser[]> {
+  await requireUser();
+  return prisma.user.findMany({
+    where: { status: "ACTIVE" },
+    select: { id: true, name: true, username: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+export interface ManagerTeamMember {
+  userId: string;
+  name: string;
+  username: string;
+}
+
+export interface ManagerTeam {
+  id: string;
+  name: string;
+  members: ManagerTeamMember[];
+}
+
+/**
+ * The manager's own active teams (or every active team, for a global Admin)
+ * with full member rows for the delegation UI. Reuses `getManagerScope()`'s
+ * admin-widens-to-every-active-team resolution rather than re-deriving it, so
+ * "which teams can this caller edit" stays defined in exactly one place; this
+ * just re-selects those same teams with member name/username attached (the
+ * scope's own `teams`/`memberIds` are id-only, too thin for this UI).
+ */
+export async function getManagerTeams(): Promise<ManagerTeam[]> {
+  const scope = await getManagerScope();
+  if (scope.teamIds.length === 0) return [];
+
+  const teams = await prisma.team.findMany({
+    where: { id: { in: scope.teamIds } },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      members: {
+        select: { userId: true, user: { select: { name: true, username: true } } },
+        orderBy: { user: { name: "asc" } },
+      },
+    },
+  });
+
+  return teams.map((t) => ({
+    id: t.id,
+    name: t.name,
+    members: t.members.map((m) => ({
+      userId: m.userId,
+      name: m.user.name,
+      username: m.user.username,
+    })),
+  }));
 }

@@ -17,11 +17,16 @@ import {
   getManagerProjectProgress,
   getManagerScope,
   getManagerTeamActivity,
+  getManagerTeams,
   getManagerWorkload,
+  listAssignableUsersForManager,
+  type ManagerAssignableUser,
+  type ManagerTeam,
 } from "@/features/manager/queries";
 import { KpiCard } from "@/features/dashboard/components/KpiCard";
 import { ActivityFeed } from "@/features/dashboard/components/ActivityFeed";
 import { DashboardEntrance } from "@/features/dashboard/components/DashboardEntrance";
+import { ManagerTeamMembers } from "@/features/manager/components/ManagerTeamMembers";
 import { MemberActiveTasks } from "@/features/manager/components/MemberActiveTasks";
 import { WorkloadBars } from "@/features/manager/components/WorkloadBars";
 import { ProjectProgressList } from "@/features/manager/components/ProjectProgressList";
@@ -51,7 +56,15 @@ function Panel({
   );
 }
 
-function EmptyState({ title, body }: { title: string; body: string }) {
+function EmptyState({
+  title,
+  body,
+  children,
+}: {
+  title: string;
+  body: string;
+  children?: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-foreground text-2xl font-semibold tracking-tight">
@@ -61,7 +74,32 @@ function EmptyState({ title, body }: { title: string; body: string }) {
         <p className="text-foreground text-base font-medium">{title}</p>
         <p className="text-muted-foreground text-sm">{body}</p>
       </div>
+      {children}
     </div>
+  );
+}
+
+/**
+ * "My teams" delegation section (Task C3) — own-team member add/remove.
+ * Deliberately independent of project scope: a team can have members before
+ * it's ever linked to a project, and `/admin/teams/*` is Admin-only at the
+ * proxy layer, so this page is the ONLY UI path a non-admin team manager has
+ * to manage their team's membership. Rendered both on the full dashboard and
+ * on the "no projects yet" empty state below.
+ */
+function MyTeamsSection({
+  teams,
+  users,
+}: {
+  teams: ManagerTeam[];
+  users: ManagerAssignableUser[];
+}) {
+  if (teams.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-3">
+      <SectionHeading>My teams</SectionHeading>
+      <ManagerTeamMembers teams={teams} users={users} />
+    </section>
   );
 }
 
@@ -91,21 +129,29 @@ export default async function ManagerPage() {
   const scope = await getManagerScope();
 
   if (scope.projectIds.length === 0) {
+    const [teams, assignableUsers] = await Promise.all([
+      getManagerTeams(),
+      listAssignableUsersForManager(),
+    ]);
     return (
       <EmptyState
         title="Your team doesn't have any projects yet"
         body="Once your team is linked to a project, KPIs, workload, and active tasks will appear here."
-      />
+      >
+        <MyTeamsSection teams={teams} users={assignableUsers} />
+      </EmptyState>
     );
   }
 
-  const [kpis, workload, activeTasks, projectProgress, activity] =
+  const [kpis, workload, activeTasks, projectProgress, activity, teams, assignableUsers] =
     await Promise.all([
       getManagerKpis(scope),
       getManagerWorkload(scope),
       getManagerActiveTasksByMember(scope),
       getManagerProjectProgress(scope),
       getManagerTeamActivity(scope),
+      getManagerTeams(),
+      listAssignableUsersForManager(),
     ]);
 
   const now = new Date();
@@ -204,6 +250,8 @@ export default async function ManagerPage() {
             </Panel>
           </div>
         </div>
+
+        <MyTeamsSection teams={teams} users={assignableUsers} />
       </div>
     </DashboardEntrance>
   );
