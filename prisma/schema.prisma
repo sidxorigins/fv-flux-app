@@ -91,6 +91,9 @@ model User {
   timeEntries        TimeEntry[]
   apiKeys            ApiKey[]            @relation("ApiKeyActor")
   apiKeysCreated     ApiKey[]            @relation("ApiKeyCreatedBy")
+  managedTeams       Team[]              @relation("TeamManager")
+  teamMemberships    TeamMembership[]
+  projectLeads       ProjectLead[]
 }
 
 model Project {
@@ -105,21 +108,24 @@ model Project {
   updatedAt   DateTime @updatedAt
 
   // Never hard-delete a user who leads a project.
-  lead        User                @relation("ProjectLead", fields: [leadId], references: [id], onDelete: Restrict)
-  memberships ProjectMembership[]
-  tasks       Task[]
-  labels      Label[]
-  savedViews  SavedView[]
+  lead            User                @relation("ProjectLead", fields: [leadId], references: [id], onDelete: Restrict)
+  memberships     ProjectMembership[]
+  tasks           Task[]
+  labels          Label[]
+  savedViews      SavedView[]
+  teams           TeamProject[]
+  additionalLeads ProjectLead[]
 
   @@index([leadId])
 }
 
 model ProjectMembership {
-  id          String      @id @default(cuid())
+  id          String       @id @default(cuid())
   projectId   String
   userId      String
   projectRole ProjectRole
-  createdAt   DateTime    @default(now())
+  manualRole  ProjectRole?
+  createdAt   DateTime     @default(now())
 
   // Deleting a project cascades its memberships; users are never hard-deleted.
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -160,10 +166,11 @@ model Task {
   reporterId  String
   parentId    String?
   // Fractional-index / midpoint ordering value for the board.
-  position    Float
-  dueDate     DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  position       Float
+  dueDate        DateTime?
+  estimatedHours Float?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   // Deleting a project cascades its tasks.
   project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -399,5 +406,58 @@ model ApiKey {
   user      User @relation("ApiKeyActor", fields: [userId], references: [id], onDelete: Cascade)
   createdBy User @relation("ApiKeyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Teams org foundation (Team / Lead / access-sync)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  managerId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  manager  User?            @relation("TeamManager", fields: [managerId], references: [id], onDelete: SetNull)
+  members  TeamMembership[]
+  projects TeamProject[]
+  @@index([managerId])
+}
+
+model TeamMembership {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  createdAt DateTime @default(now())
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([teamId, userId])
+  @@index([userId])
+}
+
+model TeamProject {
+  id        String      @id @default(cuid())
+  teamId    String
+  projectId String
+  role      ProjectRole @default(MEMBER)
+  createdAt DateTime    @default(now())
+  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@unique([teamId, projectId])
+  @@index([projectId])
+}
+
+model ProjectLead {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  createdAt DateTime @default(now())
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([projectId, userId])
   @@index([userId])
 }
