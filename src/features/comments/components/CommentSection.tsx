@@ -172,6 +172,7 @@ export function CommentSection({
             placeholder="Add a comment… @ to mention, paste or drop an image"
             mentionItems={mentionItems}
             onImageUpload={onImageUpload}
+            showEmoji
           />
 
           {trayFiles.length > 0 ? (

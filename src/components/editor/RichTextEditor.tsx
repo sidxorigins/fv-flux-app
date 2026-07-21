@@ -25,8 +25,10 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
 } from "react";
+import dynamic from "next/dynamic";
 import {
   EditorContent,
   ReactRenderer,
@@ -54,15 +56,25 @@ import {
   ListOrdered,
   Quote,
   Redo2,
+  Smile,
   Strikethrough,
   Undo2,
   Unlink,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 import "./editor.css";
+
+// The emoji dataset (~large) only loads once the picker first opens — kept
+// out of this editor's (and its callers') initial bundle. ssr:false because
+// emoji-mart renders straight to the DOM (see EmojiPicker.tsx).
+const EmojiPicker = dynamic(
+  () => import("@/features/comments/components/EmojiPicker").then((m) => m.EmojiPicker),
+  { ssr: false },
+);
 
 /** `--flux-editor-min-height` is a custom property consumed by editor.css. */
 type EditorContentStyle = CSSProperties & {
@@ -92,6 +104,12 @@ interface RichTextEditorProps {
    * abort (e.g. rejected/failed — the handler surfaces its own error toast).
    */
   onImageUpload?: (file: File) => Promise<string | null>;
+  /**
+   * Opt-in "Insert emoji" toolbar button. Opens a themed emoji-mart picker
+   * (dynamically imported so the dataset stays out of first paint) and
+   * inserts the picked emoji's native character at the caret.
+   */
+  showEmoji?: boolean;
 }
 
 /**
@@ -169,6 +187,13 @@ interface ToolbarButtonConfig {
   onClick: () => void;
 }
 
+// Shared with the emoji popover trigger below so it matches every other
+// toolbar button pixel-for-pixel even though it isn't rendered via
+// ToolbarButton itself (Base UI's PopoverTrigger needs to own the click/aria
+// wiring, via its `render` prop).
+const TOOLBAR_BUTTON_CLASSNAME =
+  "text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-surface-raised hover:text-foreground";
+
 function ToolbarButton({
   label,
   icon: Icon,
@@ -191,8 +216,7 @@ function ToolbarButton({
       }}
       onClick={onClick}
       className={cn(
-        "text-muted-foreground transition-colors duration-150 motion-reduce:transition-none",
-        "hover:bg-surface-raised hover:text-foreground",
+        TOOLBAR_BUTTON_CLASSNAME,
         isActive && "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
       )}
     >
@@ -211,7 +235,10 @@ export function RichTextEditor({
   className,
   mentionItems,
   onImageUpload,
+  showEmoji = false,
 }: RichTextEditorProps) {
+  const [emojiOpen, setEmojiOpen] = useState(false);
+
   // Keep the latest upload handler + editor instance in refs so the paste/drop
   // handlers (baked into editorProps at creation, deps []) always call the
   // current versions rather than a stale closure.
@@ -536,6 +563,41 @@ export function RichTextEditor({
               accept="image/png,image/jpeg,image/webp,image/gif"
               onChange={onPickImage}
             />
+          </>
+        ) : null}
+
+        {showEmoji ? (
+          <>
+            <Separator />
+            <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+              <PopoverTrigger
+                disabled={!editor}
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Insert emoji"
+                    title="Insert emoji"
+                    onMouseDown={(event) => {
+                      // Prevent the toolbar click from stealing focus/selection from the editor.
+                      event.preventDefault();
+                    }}
+                    className={TOOLBAR_BUTTON_CLASSNAME}
+                  />
+                }
+              >
+                <Smile aria-hidden className="size-3.5" />
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-0">
+                <EmojiPicker
+                  onSelect={(native) => {
+                    editor?.chain().focus().insertContent(native).run();
+                    setEmojiOpen(false);
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
           </>
         ) : null}
 
