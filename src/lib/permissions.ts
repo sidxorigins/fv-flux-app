@@ -124,3 +124,40 @@ export function canEditTasks(projectId: string) {
 export function canViewProject(projectId: string) {
   return requireProjectRole(projectId, "VIEWER");
 }
+
+// Team management — gates team management, the manager dashboard, and
+// project-lead assignment (Teams Org Foundation).
+
+/** True if `userId` can manage `teamId`: a global Admin, or the team's manager. */
+export async function canManageTeam(userId: string, teamId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { globalRole: true } });
+  if (user?.globalRole === "ADMIN") return true;
+  const team = await prisma.team.findUnique({ where: { id: teamId }, select: { managerId: true } });
+  return !!team && team.managerId === userId;
+}
+
+/** Throws AuthorizationError unless the caller is Admin or the team's manager. */
+export async function requireTeamManage(teamId: string): Promise<User> {
+  const user = await requireUser();
+  if (user.globalRole === "ADMIN") return user;
+  const team = await prisma.team.findUnique({ where: { id: teamId }, select: { managerId: true } });
+  if (!team || team.managerId !== user.id) throw new AuthorizationError("FORBIDDEN");
+  return user;
+}
+
+/** The ids of every team `userId` manages. */
+export async function managedTeamIds(userId: string): Promise<string[]> {
+  const teams = await prisma.team.findMany({ where: { managerId: userId }, select: { id: true } });
+  return teams.map((t) => t.id);
+}
+
+/** True if `userId` manages at least one team. */
+export async function isManagerOfAnyTeam(userId: string): Promise<boolean> {
+  const n = await prisma.team.count({ where: { managerId: userId } });
+  return n > 0;
+}
+
+/** Assigning/removing project leads is an Admin-only action (#7). */
+export function canManageProjectLeads(user: User): boolean {
+  return user.globalRole === "ADMIN";
+}
