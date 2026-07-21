@@ -381,7 +381,9 @@ export async function createUser(
       // something to see on first login.
       for (const [projectId, projectRole] of grantsByProject) {
         await tx.projectMembership.create({
-          data: { projectId, userId: created.id, projectRole },
+          // manualRole marks this as an admin grant (not team/lead-derived) so it
+          // survives access recompute and stays editable/removable — see access-sync.
+          data: { projectId, userId: created.id, projectRole, manualRole: projectRole },
         });
         await tx.auditLog.create({
           data: {
