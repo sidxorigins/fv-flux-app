@@ -131,6 +131,17 @@ export const teamProjectRemoveSchema = z.object({
   projectId: z.string().min(1, "Missing project id"),
 });
 
+// ── Project leads (Phase B, Task B3) ─────────────────────────────────────────
+export const projectLeadSchema = z.object({
+  projectId: z.string().min(1, "Missing project id"),
+  userId: z.string().min(1, "Missing user id"),
+});
+
+export const setPrimaryLeadSchema = z.object({
+  projectId: z.string().min(1, "Missing project id"),
+  userId: z.string().min(1, "Missing user id"),
+});
+
 // ── Audit log query ─────────────────────────────────────────────────────────
 export const auditQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
@@ -161,3 +172,5 @@ export type TeamMemberInput = z.infer<typeof teamMemberSchema>;
 export type TeamProjectInput = z.infer<typeof teamProjectSchema>;
 export type TeamProjectRoleInput = z.infer<typeof teamProjectRoleSchema>;
 export type TeamProjectRemoveInput = z.infer<typeof teamProjectRemoveSchema>;
+export type ProjectLeadInput = z.infer<typeof projectLeadSchema>;
+export type SetPrimaryLeadInput = z.infer<typeof setPrimaryLeadSchema>;

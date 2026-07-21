@@ -74,13 +74,16 @@ import {
 } from "@/lib/permissions";
 import { recomputeForTeam, recomputeMembership } from "@/lib/access-sync";
 import {
+  addProjectLead,
   addProjectMember,
   addTeamMember,
   assignTeamManager,
   assignTeamProject,
   createTeam,
+  removeProjectLead,
   removeProjectMember,
   removeTeamMember,
+  setPrimaryLead,
   unassignTeamProject,
   updateProjectMember,
   updateTeam,
@@ -876,6 +879,234 @@ describe("unassignTeamProject", () => {
           targetType: "TeamProject",
           targetId: TEAM_ID,
           metadata: { teamId: TEAM_ID, projectId: PROJECT_ID, role: "MEMBER" },
+        }),
+      }),
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Project leads (Teams Org Foundation, Task B3) — multi-lead management.
+// Lead access = MANAGER on the project (recomputeMembership treats
+// `leadId === user OR a ProjectLead row` as a MANAGER source).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OLD_PRIMARY_ID = "old-primary-1";
+
+describe("addProjectLead", () => {
+  it("requires admin — non-admin gets ok:false and never touches the DB", async () => {
+    mockRequireAdmin.mockRejectedValue(new AuthorizationError("FORBIDDEN"));
+
+    const result = await addProjectLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do that." });
+    expect(db.projectLead.upsert).not.toHaveBeenCalled();
+    expect(db.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the project doesn't exist", async () => {
+    db.project.findUnique.mockResolvedValue(null);
+    db.user.findUnique.mockResolvedValue({ id: USER_ID, status: "ACTIVE" });
+
+    const result = await addProjectLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "Project not found." });
+    expect(db.projectLead.upsert).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the target user doesn't exist", async () => {
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID, leadId: OLD_PRIMARY_ID });
+    db.user.findUnique.mockResolvedValue(null);
+
+    const result = await addProjectLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "User not found." });
+    expect(db.projectLead.upsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-ACTIVE target user", async () => {
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID, leadId: OLD_PRIMARY_ID });
+    db.user.findUnique.mockResolvedValue({ id: USER_ID, status: "SUSPENDED" });
+
+    const result = await addProjectLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "Lead must be an active user." });
+    expect(db.projectLead.upsert).not.toHaveBeenCalled();
+  });
+
+  it("upserts the ProjectLead row (idempotent), calls recomputeMembership, and audits lead.added", async () => {
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID, leadId: OLD_PRIMARY_ID });
+    db.user.findUnique.mockResolvedValue({ id: USER_ID, status: "ACTIVE" });
+    db.projectLead.upsert.mockResolvedValue({});
+
+    const result = await addProjectLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.projectLead.upsert).toHaveBeenCalledWith({
+      where: { projectId_userId: { projectId: PROJECT_ID, userId: USER_ID } },
+      update: {},
+      create: { projectId: PROJECT_ID, userId: USER_ID },
+    });
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, USER_ID);
+    // recompute must run AFTER the upsert so it sees the just-written lead row.
+    const upsertOrder = db.projectLead.upsert.mock.invocationCallOrder[0];
+    const recomputeOrder = mockRecomputeMembership.mock.invocationCallOrder[0];
+    expect(upsertOrder).toBeLessThan(recomputeOrder);
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: ACTOR.id,
+          action: "lead.added",
+          targetType: "ProjectLead",
+          targetId: USER_ID,
+          metadata: { projectId: PROJECT_ID, userId: USER_ID },
+        }),
+      }),
+    );
+  });
+});
+
+describe("removeProjectLead", () => {
+  it("requires admin — non-admin gets ok:false and never touches the DB", async () => {
+    mockRequireAdmin.mockRejectedValue(new AuthorizationError("FORBIDDEN"));
+
+    const result = await removeProjectLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do that." });
+    expect(db.projectLead.delete).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the project doesn't exist", async () => {
+    db.project.findUnique.mockResolvedValue(null);
+
+    const result = await removeProjectLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "Project not found." });
+    expect(db.projectLead.delete).not.toHaveBeenCalled();
+  });
+
+  it("REFUSES to remove the current primary lead — no delete, no recompute", async () => {
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID, leadId: USER_ID });
+
+    const result = await removeProjectLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Reassign the primary lead before removing them.",
+    });
+    expect(db.projectLead.delete).not.toHaveBeenCalled();
+    expect(mockRecomputeMembership).not.toHaveBeenCalled();
+    expect(db.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent when no ProjectLead row exists for a non-primary user", async () => {
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID, leadId: OLD_PRIMARY_ID });
+    db.projectLead.findUnique.mockResolvedValue(null);
+
+    const result = await removeProjectLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.projectLead.delete).not.toHaveBeenCalled();
+    expect(mockRecomputeMembership).not.toHaveBeenCalled();
+    expect(db.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("removes a co-lead: deletes the ProjectLead row, recomputes them, and audits lead.removed", async () => {
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID, leadId: OLD_PRIMARY_ID });
+    db.projectLead.findUnique.mockResolvedValue({ id: "lead-row-1" });
+    db.projectLead.delete.mockResolvedValue({});
+
+    const result = await removeProjectLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.projectLead.delete).toHaveBeenCalledWith({
+      where: { projectId_userId: { projectId: PROJECT_ID, userId: USER_ID } },
+    });
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, USER_ID);
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: ACTOR.id,
+          action: "lead.removed",
+          targetType: "ProjectLead",
+          targetId: USER_ID,
+          metadata: { projectId: PROJECT_ID, userId: USER_ID },
+        }),
+      }),
+    );
+  });
+});
+
+describe("setPrimaryLead", () => {
+  it("requires admin — non-admin gets ok:false and never touches the DB", async () => {
+    mockRequireAdmin.mockRejectedValue(new AuthorizationError("FORBIDDEN"));
+
+    const result = await setPrimaryLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do that." });
+    expect(db.project.update).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the project doesn't exist", async () => {
+    db.project.findUnique.mockResolvedValue(null);
+    db.user.findUnique.mockResolvedValue({ id: USER_ID, status: "ACTIVE" });
+
+    const result = await setPrimaryLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "Project not found." });
+    expect(db.project.update).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the target user doesn't exist", async () => {
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID, leadId: OLD_PRIMARY_ID });
+    db.user.findUnique.mockResolvedValue(null);
+
+    const result = await setPrimaryLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "User not found." });
+    expect(db.project.update).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent when the target is already the primary lead", async () => {
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID, leadId: USER_ID });
+    db.user.findUnique.mockResolvedValue({ id: USER_ID, status: "ACTIVE" });
+
+    const result = await setPrimaryLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.project.update).not.toHaveBeenCalled();
+    expect(mockRecomputeMembership).not.toHaveBeenCalled();
+    expect(db.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("ensures a ProjectLead row for the new primary, updates Project.leadId, recomputes BOTH old and new primary, and audits lead.primary_changed with from/to", async () => {
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID, leadId: OLD_PRIMARY_ID });
+    db.user.findUnique.mockResolvedValue({ id: USER_ID, status: "ACTIVE" });
+    db.projectLead.upsert.mockResolvedValue({});
+    db.project.update.mockResolvedValue({});
+
+    const result = await setPrimaryLead({ projectId: PROJECT_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.projectLead.upsert).toHaveBeenCalledWith({
+      where: { projectId_userId: { projectId: PROJECT_ID, userId: USER_ID } },
+      update: {},
+      create: { projectId: PROJECT_ID, userId: USER_ID },
+    });
+    expect(db.project.update).toHaveBeenCalledWith({
+      where: { id: PROJECT_ID },
+      data: { leadId: USER_ID },
+    });
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, OLD_PRIMARY_ID);
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, USER_ID);
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: ACTOR.id,
+          action: "lead.primary_changed",
+          targetType: "Project",
+          targetId: PROJECT_ID,
+          metadata: { projectId: PROJECT_ID, from: OLD_PRIMARY_ID, to: USER_ID },
         }),
       }),
     );

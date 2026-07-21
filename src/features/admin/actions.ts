@@ -36,8 +36,10 @@ import {
   createUserSchema,
   inviteIdSchema,
   membershipSchema,
+  projectLeadSchema,
   removeMembershipSchema,
   sendInviteSchema,
+  setPrimaryLeadSchema,
   setUserStatusSchema,
   teamMemberSchema,
   teamProjectRemoveSchema,
@@ -1170,6 +1172,196 @@ export async function unassignTeamProject(
     revalidatePath("/admin/teams");
     revalidatePath(`/admin/teams/${teamId}`);
     revalidatePath(`/admin/projects/${projectId}`);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err) };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Project leads (Teams Org Foundation, Task B3) — multiple leads per project.
+// `Project.leadId` is the required PRIMARY lead; `ProjectLead` rows are
+// additional co-leads. Lead access = MANAGER on the project — access-sync's
+// recomputeMembership already treats `leadId === user OR a ProjectLead row` as
+// a MANAGER source, so every mutation here just writes the lead relationship
+// and recomputes the affected user(s). All Admin-only.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function revalidateLeads(projectId: string): void {
+  revalidatePath(`/admin/projects/${projectId}`);
+  revalidatePath("/admin/projects");
+}
+
+/** Add a co-lead to a project. Upsert-safe (idempotent on the unique key). */
+export async function addProjectLead(input: unknown): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+
+    const parsed = projectLeadSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: parsed.error.issues[0]?.message ?? "Invalid input",
+      };
+    }
+    const { projectId, userId } = parsed.data;
+
+    const [project, target] = await Promise.all([
+      prisma.project.findUnique({ where: { id: projectId }, select: { id: true } }),
+      prisma.user.findUnique({ where: { id: userId } }),
+    ]);
+    if (!project) return { ok: false, error: "Project not found." };
+    if (!target) return { ok: false, error: "User not found." };
+    if (target.status !== "ACTIVE") {
+      return { ok: false, error: "Lead must be an active user." };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.projectLead.upsert({
+        where: { projectId_userId: { projectId, userId } },
+        update: {},
+        create: { projectId, userId },
+      });
+      await recomputeMembership(tx, projectId, userId);
+      await tx.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: "lead.added",
+          targetType: "ProjectLead",
+          targetId: userId,
+          metadata: { projectId, userId },
+        },
+      });
+    });
+
+    revalidateLeads(projectId);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err) };
+  }
+}
+
+/**
+ * Remove a co-lead from a project. The primary lead (`Project.leadId`) can
+ * never be left empty, so removing the current primary is refused — the admin
+ * must call `setPrimaryLead` to reassign it first. Idempotent when no
+ * `ProjectLead` row exists for a non-primary user.
+ */
+export async function removeProjectLead(input: unknown): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+
+    const parsed = projectLeadSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: parsed.error.issues[0]?.message ?? "Invalid input",
+      };
+    }
+    const { projectId, userId } = parsed.data;
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { leadId: true },
+    });
+    if (!project) return { ok: false, error: "Project not found." };
+
+    if (userId === project.leadId) {
+      return {
+        ok: false,
+        error: "Reassign the primary lead before removing them.",
+      };
+    }
+
+    const existing = await prisma.projectLead.findUnique({
+      where: { projectId_userId: { projectId, userId } },
+    });
+    if (!existing) return { ok: true }; // idempotent no-op — nothing to remove
+
+    await prisma.$transaction(async (tx) => {
+      await tx.projectLead.delete({
+        where: { projectId_userId: { projectId, userId } },
+      });
+      await recomputeMembership(tx, projectId, userId);
+      await tx.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: "lead.removed",
+          targetType: "ProjectLead",
+          targetId: userId,
+          metadata: { projectId, userId },
+        },
+      });
+    });
+
+    revalidateLeads(projectId);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err) };
+  }
+}
+
+/**
+ * Reassign the project's PRIMARY lead. Ensures the new primary also has a
+ * `ProjectLead` row (so they remain a co-lead if later demoted from primary),
+ * then flips `Project.leadId`. Both the old and new primary are recomputed —
+ * the old primary may lose their MANAGER-derived access entirely if they
+ * aren't also a co-lead via a `ProjectLead` row.
+ */
+export async function setPrimaryLead(input: unknown): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+
+    const parsed = setPrimaryLeadSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: parsed.error.issues[0]?.message ?? "Invalid input",
+      };
+    }
+    const { projectId, userId } = parsed.data;
+
+    const [project, target] = await Promise.all([
+      prisma.project.findUnique({ where: { id: projectId }, select: { leadId: true } }),
+      prisma.user.findUnique({ where: { id: userId } }),
+    ]);
+    if (!project) return { ok: false, error: "Project not found." };
+    if (!target) return { ok: false, error: "User not found." };
+    if (target.status !== "ACTIVE") {
+      return { ok: false, error: "Lead must be an active user." };
+    }
+
+    const oldPrimaryId = project.leadId;
+    if (oldPrimaryId === userId) {
+      return { ok: true }; // idempotent no-op — already the primary
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.projectLead.upsert({
+        where: { projectId_userId: { projectId, userId } },
+        update: {},
+        create: { projectId, userId },
+      });
+      await tx.project.update({ where: { id: projectId }, data: { leadId: userId } });
+
+      // The former primary is no longer covered by `leadId === user`; recompute
+      // them so any now-unjustified MANAGER-derived access is stripped (unless
+      // they still hold a ProjectLead row as a co-lead).
+      await recomputeMembership(tx, projectId, oldPrimaryId);
+      await recomputeMembership(tx, projectId, userId);
+
+      await tx.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: "lead.primary_changed",
+          targetType: "Project",
+          targetId: projectId,
+          metadata: { projectId, from: oldPrimaryId, to: userId },
+        },
+      });
+    });
+
+    revalidateLeads(projectId);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: friendlyAuthError(err) };

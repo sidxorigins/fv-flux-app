@@ -453,6 +453,59 @@ export async function getTeam(teamId: string): Promise<AdminTeamDetail | null> {
   };
 }
 
+// ── Project leads (Teams Org Foundation, Task B3) ──────────────────────────
+export interface AdminProjectLead {
+  userId: string;
+  name: string;
+  username: string;
+  isPrimary: boolean;
+}
+
+export interface AdminProjectLeads {
+  primaryLeadId: string;
+  leads: AdminProjectLead[];
+}
+
+/**
+ * The union of a project's primary lead (`Project.leadId`) and its co-leads
+ * (`ProjectLead` rows) — the same set `recomputeMembership` treats as a
+ * MANAGER source. Admin-only, mirroring the other project-lead actions.
+ */
+export async function getProjectLeads(projectId: string): Promise<AdminProjectLeads> {
+  await requireAdmin();
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      leadId: true,
+      lead: { select: { id: true, name: true, username: true } },
+      additionalLeads: {
+        select: { user: { select: { id: true, name: true, username: true } } },
+      },
+    },
+  });
+  if (!project) return { primaryLeadId: "", leads: [] };
+
+  const byId = new Map<string, AdminProjectLead>();
+  byId.set(project.lead.id, {
+    userId: project.lead.id,
+    name: project.lead.name,
+    username: project.lead.username,
+    isPrimary: true,
+  });
+  for (const { user } of project.additionalLeads) {
+    if (byId.has(user.id)) continue; // primary already covers this user
+    byId.set(user.id, {
+      userId: user.id,
+      name: user.name,
+      username: user.username,
+      isPrimary: user.id === project.leadId,
+    });
+  }
+
+  return { primaryLeadId: project.leadId, leads: [...byId.values()] };
+}
+
 // ── Audit log ───────────────────────────────────────────────────────────────
 export interface AdminAuditRow {
   id: string;
