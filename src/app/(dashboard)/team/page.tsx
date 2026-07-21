@@ -1,4 +1,5 @@
 import { getTeamProductivity, getVisibleTeams } from "@/features/team/queries";
+import type { TeamProductivity } from "@/features/team/queries";
 import { TeamProductivitySection } from "@/features/team/components/TeamProductivitySection";
 import { DashboardEntrance } from "@/features/dashboard/components/DashboardEntrance";
 
@@ -34,6 +35,13 @@ function EmptyState() {
  * Mirrors `/manager`'s RSC compose pattern: resolve scope, fetch everything
  * needed in parallel, wrap the whole page in the one after-paint
  * `DashboardEntrance` fade — numbers render immediately either way.
+ *
+ * Per-team fetches use `Promise.allSettled`, not `Promise.all`: a team's
+ * `membersCanSeeProductivity` toggle (or the caller's own membership) can
+ * flip between `getVisibleTeams()` resolving the picker and the per-team
+ * `getTeamProductivity` call landing, which throws `AuthorizationError`. A
+ * settled-but-rejected team is simply omitted rather than 500ing the whole
+ * page — the user still sees every team that succeeded.
  */
 export default async function TeamPage() {
   const teams = await getVisibleTeams();
@@ -42,9 +50,14 @@ export default async function TeamPage() {
     return <EmptyState />;
   }
 
-  const productivity = await Promise.all(
+  const settled = await Promise.allSettled(
     teams.map((team) => getTeamProductivity(team.id)),
   );
+  const productivity = settled
+    .filter(
+      (r): r is PromiseFulfilledResult<TeamProductivity> => r.status === "fulfilled",
+    )
+    .map((r) => r.value);
 
   return (
     <DashboardEntrance>

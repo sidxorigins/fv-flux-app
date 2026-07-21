@@ -151,11 +151,13 @@ interface UserMinutesRow {
 
 /**
  * Per-teammate productivity for one team — GATED, re-checked from the DB on
- * every call. Allowed iff the caller is a global Admin, the team's own
- * manager, or a team member with `membersCanSeeProductivity` on. Throws
- * `AuthorizationError("FORBIDDEN")` otherwise — including when the team
- * doesn't exist, so a non-member can't distinguish "no access" from "no such
- * team".
+ * every call. Allowed iff the team is active AND the caller is a global
+ * Admin, the team's own manager, or a team member with
+ * `membersCanSeeProductivity` on. Throws `AuthorizationError("FORBIDDEN")`
+ * otherwise — including when the team doesn't exist or has been deactivated,
+ * so a non-member can't distinguish "no access" from "no such team", and a
+ * bookmarked URL to a deactivated team stops serving data (matches
+ * `getVisibleTeams()`, which only ever lists active teams).
  *
  * The team (gate fields + member/project ids) loads in one query. `memberIds`
  * = team members ∪ manager (deduped), so a manager who assigns themself work
@@ -171,6 +173,11 @@ export async function getTeamProductivity(teamId: string): Promise<TeamProductiv
     select: TEAM_GATE_SELECT,
   });
   if (!team) throw new AuthorizationError("FORBIDDEN");
+  // An inactive team is never viewable — even for its manager or a global
+  // Admin — consistent with getVisibleTeams(), which only ever lists active
+  // teams. Without this, a team deactivated after a user bookmarked its
+  // productivity URL would still serve data.
+  if (!team.isActive) throw new AuthorizationError("FORBIDDEN");
 
   const isMember = team.members.some((m) => m.userId === me.id);
   const allowed =
