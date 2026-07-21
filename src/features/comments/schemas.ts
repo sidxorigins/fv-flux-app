@@ -41,6 +41,13 @@ export const deleteCommentSchema = z.object({
   commentId: idSchema,
 });
 
+/** Toggle a reaction on a comment. The reacting user is always the SESSION user. */
+export const reactionSchema = z.object({
+  commentId: z.string().min(1),
+  emoji: z.string().min(1).max(32),
+});
+
 export type AddCommentInput = z.infer<typeof addCommentSchema>;
 export type UpdateCommentInput = z.infer<typeof updateCommentSchema>;
 export type DeleteCommentInput = z.infer<typeof deleteCommentSchema>;
+export type ReactionInput = z.infer<typeof reactionSchema>;

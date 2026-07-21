@@ -52,6 +52,7 @@ vi.mock("@/lib/db", () => {
   const prisma: Record<string, unknown> = {
     task: model(),
     comment: model(),
+    commentReaction: model(),
     attachment: model(),
     activityLog: model(),
     auditLog: model(),
@@ -62,7 +63,7 @@ vi.mock("@/lib/db", () => {
 
 import { prisma } from "@/lib/db";
 import { requireProjectRole } from "@/lib/permissions";
-import { addComment } from "./actions";
+import { addComment, toggleCommentReaction } from "./actions";
 
 interface MockModel {
   findUnique: Mock;
@@ -70,10 +71,12 @@ interface MockModel {
   create: Mock;
   updateMany: Mock;
   deleteMany: Mock;
+  delete: Mock;
 }
 const db = prisma as unknown as {
   task: MockModel;
   comment: MockModel;
+  commentReaction: MockModel;
   attachment: MockModel;
   activityLog: MockModel;
   $transaction: Mock;
@@ -197,5 +200,39 @@ describe("addComment — attachment linking", () => {
     });
     const created = db.comment.create.mock.calls[0][0];
     expect(created.data.body).toContain("/api/files/img1");
+  });
+});
+
+describe("toggleCommentReaction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRequireProjectRole.mockResolvedValue({ user: { id: "u1" }, role: "VIEWER" });
+    db.comment.findUnique.mockResolvedValue({ task: { projectId: "p1" } });
+  });
+
+  it("creates the reaction on first toggle (VIEWER allowed)", async () => {
+    db.commentReaction.findUnique.mockResolvedValue(null);
+    db.commentReaction.create.mockResolvedValue({});
+    const res = await toggleCommentReaction({ commentId: "c1", emoji: "👍" });
+    expect(res).toEqual({ ok: true, data: { reacted: true } });
+    expect(db.commentReaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { commentId: "c1", userId: "u1", emoji: "👍" } }),
+    );
+  });
+
+  it("removes the reaction on repeat toggle", async () => {
+    db.commentReaction.findUnique.mockResolvedValue({ id: "r1" });
+    db.commentReaction.delete.mockResolvedValue({});
+    const res = await toggleCommentReaction({ commentId: "c1", emoji: "👍" });
+    expect(res).toEqual({ ok: true, data: { reacted: false } });
+    expect(db.commentReaction.delete).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a caller without project access", async () => {
+    const { AuthorizationError } = await import("@/lib/permissions");
+    mockRequireProjectRole.mockRejectedValue(new AuthorizationError("FORBIDDEN"));
+    const res = await toggleCommentReaction({ commentId: "c1", emoji: "👍" });
+    expect(res.ok).toBe(false);
+    expect(db.commentReaction.create).not.toHaveBeenCalled();
   });
 });

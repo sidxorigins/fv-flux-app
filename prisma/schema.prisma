@@ -80,6 +80,7 @@ model User {
   assignedTasks      Task[]              @relation("TaskAssignee")
   reportedTasks      Task[]              @relation("TaskReporter")
   comments           Comment[]
+  commentReactions   CommentReaction[]
   attachments        Attachment[]
   auditLogs          AuditLog[]
   activityLogs       ActivityLog[]
@@ -208,12 +209,27 @@ model Comment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  task        Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  author      User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  task        Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author      User             @relation(fields: [authorId], references: [id], onDelete: Restrict)
   attachments Attachment[]
+  reactions   CommentReaction[]
 
   @@index([taskId])
   @@index([authorId])
+}
+
+model CommentReaction {
+  id        String   @id @default(cuid())
+  commentId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId, emoji])
+  @@index([commentId])
 }
 
 model Attachment {

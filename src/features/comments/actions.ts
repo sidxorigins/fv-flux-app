@@ -13,6 +13,8 @@
 //             content mutation, so the actor must also still hold MEMBER+.
 //   - delete: AUTHOR or project MANAGER (global Admin resolves to MANAGER via the
 //             admin-bypass policy in lib/permissions).
+//   - react:  VIEWER+ on the comment's project. The reacting user is always the
+//             SESSION user — never trust a userId from the client.
 
 import { revalidatePath } from "next/cache";
 
@@ -34,6 +36,7 @@ import { notifyMentions } from "@/features/notifications/mentions";
 import {
   addCommentSchema,
   deleteCommentSchema,
+  reactionSchema,
   updateCommentSchema,
 } from "./schemas";
 import { isRichTextEmpty } from "./text";
@@ -260,6 +263,53 @@ export async function updateComment(input: unknown): Promise<ActionResult> {
 
     revalidate();
     return { ok: true };
+  } catch (err) {
+    return toError(err);
+  }
+}
+
+/**
+ * Toggle the SESSION user's reaction (an emoji) on a comment: creates it if not
+ * yet present, deletes it if it is. `emoji` is stored as opaque text — never
+ * validated against an allowlist here, since the presentation layer owns the
+ * emoji picker. `userId` is always the resolved session user, never taken from
+ * the input, so a caller cannot react on another user's behalf.
+ */
+export async function toggleCommentReaction(
+  input: unknown,
+): Promise<ActionResult<{ reacted: boolean }>> {
+  const parsed = reactionSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const { commentId, emoji } = parsed.data;
+
+  try {
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId },
+      select: { task: { select: { projectId: true } } },
+    });
+    if (!comment) return { ok: false, error: "Comment not found." };
+
+    // VIEWER+ establishes project access — reacting doesn't require MEMBER.
+    const { user } = await requireProjectRole(comment.task.projectId, "VIEWER");
+
+    const existing = await prisma.commentReaction.findUnique({
+      where: {
+        commentId_userId_emoji: { commentId, userId: user.id, emoji },
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      await prisma.commentReaction.delete({ where: { id: existing.id } });
+    } else {
+      await prisma.commentReaction.create({
+        data: { commentId, userId: user.id, emoji },
+      });
+    }
+
+    revalidate();
+    return { ok: true, data: { reacted: !existing } };
   } catch (err) {
     return toError(err);
   }
