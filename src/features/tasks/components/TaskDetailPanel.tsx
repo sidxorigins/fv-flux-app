@@ -41,6 +41,7 @@ import type { ActivityEntry } from "../activity"
 import { createTask, deleteTask, updateTask, updateTaskStatus } from "../actions"
 import type { TaskDetail } from "../queries"
 import { ActivityList } from "./ActivityList"
+import { CopyTaskLink } from "./CopyTaskLink"
 import { StatusBadge } from "./StatusBadge"
 import { TaskDrawer } from "./TaskDrawer"
 import { TypeIcon } from "./TypeIcon"
@@ -441,7 +442,12 @@ export function TaskDetailPanel({
           currentUserId={currentUserId}
         />
       }
-      headerAction={<WatchToggle taskId={task.id} watching={isWatching} />}
+      headerAction={
+        <div className="flex items-center gap-1">
+          <CopyTaskLink projectId={task.projectId} taskId={task.id} />
+          <WatchToggle taskId={task.id} watching={isWatching} />
+        </div>
+      }
       members={members}
       projectLabels={projectLabels}
       onStatusChange={canEdit ? onStatusChange : undefined}
