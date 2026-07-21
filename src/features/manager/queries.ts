@@ -541,6 +541,9 @@ export interface ManagerTeamMember {
 export interface ManagerTeam {
   id: string;
   name: string;
+  /** Team Productivity Visibility (#8) flag — read by `ManagerTeamMembers`'s
+   * toggle so it reflects the team's actual current setting. */
+  membersCanSeeProductivity: boolean;
   members: ManagerTeamMember[];
 }
 
@@ -562,6 +565,7 @@ export async function getManagerTeams(): Promise<ManagerTeam[]> {
     select: {
       id: true,
       name: true,
+      membersCanSeeProductivity: true,
       members: {
         select: { userId: true, user: { select: { name: true, username: true } } },
         orderBy: { user: { name: "asc" } },
@@ -572,6 +576,7 @@ export async function getManagerTeams(): Promise<ManagerTeam[]> {
   return teams.map((t) => ({
     id: t.id,
     name: t.name,
+    membersCanSeeProductivity: t.membersCanSeeProductivity,
     members: t.members.map((m) => ({
       userId: m.userId,
       name: m.user.name,

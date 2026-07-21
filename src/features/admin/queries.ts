@@ -387,6 +387,9 @@ export interface AdminTeamDetail {
   isActive: boolean;
   managerId: string | null;
   managerName: string | null;
+  /** Team Productivity Visibility (#8) flag — read by `TeamDetailEditor`'s
+   * toggle so it reflects the team's actual current setting. */
+  membersCanSeeProductivity: boolean;
   members: AdminTeamMember[];
   projects: AdminTeamProject[];
 }
@@ -408,6 +411,7 @@ export async function getTeam(teamId: string): Promise<AdminTeamDetail | null> {
       description: true,
       isActive: true,
       managerId: true,
+      membersCanSeeProductivity: true,
       manager: { select: { name: true } },
       members: {
         orderBy: { createdAt: "asc" },
@@ -441,6 +445,7 @@ export async function getTeam(teamId: string): Promise<AdminTeamDetail | null> {
     isActive: team.isActive,
     managerId: team.managerId,
     managerName: team.manager?.name ?? null,
+    membersCanSeeProductivity: team.membersCanSeeProductivity,
     members: team.members.map((m) => ({
       userId: m.user.id,
       name: m.user.name,

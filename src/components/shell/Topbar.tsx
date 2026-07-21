@@ -8,6 +8,7 @@ import {
   getMyNotifications,
   getUnreadNotificationCount,
 } from "@/features/notifications/queries";
+import { getVisibleTeams } from "@/features/team/queries";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { TakeTourButton } from "@/features/onboarding/components/TakeTourButton";
 import { CommandPalette } from "./CommandPalette";
@@ -60,11 +61,19 @@ export async function Topbar({ children }: TopbarProps) {
   // /manager is server-guarded regardless (isManagerOfAnyTeam || admin) —
   // this only hides the link from users who couldn't use it anyway.
   const showManager = isAdmin || (userId ? await isManagerOfAnyTeam(userId) : false);
+  // /team is server-guarded regardless (getVisibleTeams/getTeamProductivity)
+  // — this only hides the link from a user with no visible team.
+  const showTeam = userId ? (await getVisibleTeams()).length > 0 : false;
 
   return (
     <header className="sticky top-0 z-40 px-4 pt-3 sm:px-6 lg:px-8">
       <div className="glass flex h-14 items-center justify-between gap-4 px-3 sm:px-4">
-        <MobileNav isAdmin={isAdmin} showManager={showManager} unreadCount={unreadCount} />
+        <MobileNav
+          isAdmin={isAdmin}
+          showManager={showManager}
+          showTeam={showTeam}
+          unreadCount={unreadCount}
+        />
         <div className="min-w-0 flex-1">{children}</div>
 
         <div className="flex shrink-0 items-center gap-2">

@@ -55,6 +55,7 @@ import {
   assignTeamManager,
   assignTeamProject,
   removeTeamMember,
+  setTeamProductivityVisibility,
   unassignTeamProject,
   updateTeam,
   updateTeamProjectRole,
@@ -100,6 +101,7 @@ export function TeamDetailEditor({
     <div className="flex flex-col gap-6">
       <DetailsPanel team={team} canManageAsAdmin={canManageAsAdmin} />
       <ManagerSection team={team} users={users} canManageAsAdmin={canManageAsAdmin} />
+      <ProductivitySection team={team} />
       <MembersSection team={team} users={users} />
       <ProjectsSection team={team} projects={projects} canManageAsAdmin={canManageAsAdmin} />
     </div>
@@ -362,6 +364,62 @@ function ManagerSection({
           )}
         </p>
       )}
+    </div>
+  );
+}
+
+// ── Productivity visibility (#8) ───────────────────────────────────────────
+
+/**
+ * Team Productivity Visibility (#8) toggle. Available to Admin AND the
+ * team's own delegated manager — same authority as `MembersSection`'s
+ * add/remove (both are authorised server-side by `requireTeamManage`), so
+ * this section is deliberately NOT gated on `canManageAsAdmin` the way
+ * `DetailsPanel`/`ManagerSection`/`ProjectsSection`'s edit controls are.
+ */
+function ProductivitySection({ team }: { team: AdminTeamDetail }) {
+  const router = useRouter();
+  const [isPending, startTransition] = React.useTransition();
+
+  function onToggle(next: boolean) {
+    startTransition(async () => {
+      const res = await setTeamProductivityVisibility({ teamId: team.id, visible: next });
+      if (res.ok) {
+        toast.success(
+          next
+            ? "Members can now see each other's productivity"
+            : "Productivity is private to the manager again",
+        );
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+      <div className="flex flex-col gap-0.5">
+        <h3 className="text-base font-semibold text-foreground">Productivity visibility</h3>
+        <p className="text-sm text-muted-foreground">
+          When on, members of this team can see each other&apos;s task status,
+          completion %, and hours on the <code className="text-xs">/team</code> view.
+        </p>
+      </div>
+
+      <label className="flex w-fit items-center gap-2 text-sm text-muted-foreground">
+        <Switch
+          checked={team.membersCanSeeProductivity}
+          onCheckedChange={onToggle}
+          disabled={isPending}
+          aria-label={
+            team.membersCanSeeProductivity
+              ? "Turn off member productivity visibility"
+              : "Turn on member productivity visibility"
+          }
+        />
+        Members can see each other&apos;s productivity
+      </label>
     </div>
   );
 }
