@@ -71,7 +71,7 @@ export function CommentReactions({ commentId, reactions }: CommentReactionsProps
         >
           <SmilePlus className="size-4" aria-hidden />
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto border-0 bg-transparent p-0 shadow-none">
+        <PopoverContent align="start" className="w-auto p-0">
           <EmojiPicker onSelect={react} />
         </PopoverContent>
       </Popover>

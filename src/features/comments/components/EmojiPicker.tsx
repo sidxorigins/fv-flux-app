@@ -17,11 +17,11 @@ export interface EmojiPickerProps {
  * React 19 note: `@emoji-mart/react`'s `Picker` wrapper is a thin
  * useRef/useEffect adapter around the vanilla `emoji-mart` package's own
  * (self-rendering) Picker class — it doesn't touch any React APIs removed or
- * changed in React 19, and was confirmed rendering correctly under React
- * 19.2.4 in this repo (see emoji-task-3-report.md). If that ever regresses,
- * fall back to mounting `emoji-mart`'s class `Picker` into a `ref`'d div in a
- * `useEffect` directly (documented in emoji-mart's README), keeping this same
- * `{ onSelect }` prop shape so callers don't change.
+ * changed in React 19. Verified to render under React 19.2.4 via the
+ * @emoji-mart/react adapter. If that ever regresses, fall back to mounting
+ * `emoji-mart`'s class `Picker` into a `ref`'d div in a `useEffect` directly
+ * (documented in emoji-mart's README), keeping this same `{ onSelect }` prop
+ * shape so callers don't change.
  */
 export function EmojiPicker({ onSelect }: EmojiPickerProps) {
   return (

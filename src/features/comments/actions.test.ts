@@ -235,4 +235,10 @@ describe("toggleCommentReaction", () => {
     expect(res.ok).toBe(false);
     expect(db.commentReaction.create).not.toHaveBeenCalled();
   });
+
+  it("rejects an over-length emoji (schema cap)", async () => {
+    const res = await toggleCommentReaction({ commentId: "c1", emoji: "x".repeat(33) });
+    expect(res.ok).toBe(false);
+    expect(db.commentReaction.create).not.toHaveBeenCalled();
+  });
 });
