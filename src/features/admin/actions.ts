@@ -45,6 +45,7 @@ import {
   teamProjectRemoveSchema,
   teamProjectRoleSchema,
   teamProjectSchema,
+  teamVisibilitySchema,
   updateMembershipSchema,
   updateTeamSchema,
 } from "./schemas";
@@ -976,6 +977,54 @@ export async function removeTeamMember(input: unknown): Promise<ActionResult> {
     });
 
     revalidatePath("/admin/teams");
+    revalidatePath(`/admin/teams/${teamId}`);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err) };
+  }
+}
+
+/**
+ * Toggle whether this team's members can see teammates' productivity on the
+ * `/team` view (Team Productivity Visibility #8). Defaults off (privacy);
+ * delegated to Admin or the team's own manager, same as add/removeTeamMember.
+ * The flag alone doesn't expose anything — every read of team productivity
+ * data (`getTeamProductivity`) re-checks this flag server-side on every call.
+ */
+export async function setTeamProductivityVisibility(
+  input: unknown,
+): Promise<ActionResult> {
+  try {
+    const parsed = teamVisibilitySchema.safeParse(input);
+    if (!parsed.success) return { ok: false, error: "Invalid input" };
+    const { teamId, visible } = parsed.data;
+
+    const actor = await requireTeamManage(teamId); // admin OR the team's manager
+
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { id: true },
+    });
+    if (!team) return { ok: false, error: "Team not found." };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.team.update({
+        where: { id: teamId },
+        data: { membersCanSeeProductivity: visible },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.id,
+          action: "team.productivity_visibility_changed",
+          targetType: "Team",
+          targetId: teamId,
+          metadata: { teamId, visible },
+        },
+      });
+    });
+
+    revalidatePath("/team");
+    revalidatePath("/manager");
     revalidatePath(`/admin/teams/${teamId}`);
     return { ok: true };
   } catch (err) {

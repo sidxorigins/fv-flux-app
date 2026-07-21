@@ -17,9 +17,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { addTeamMember, removeTeamMember } from "@/features/admin/actions";
+import {
+  addTeamMember,
+  removeTeamMember,
+  setTeamProductivityVisibility,
+} from "@/features/admin/actions";
 import { Combobox } from "@/features/admin/components/Combobox";
 import { initials } from "@/features/admin/components/display";
+import { Switch } from "@/components/ui/switch";
 import type {
   ManagerAssignableUser,
   ManagerTeam,
@@ -99,6 +104,22 @@ function TeamCard({ team, users }: { team: ManagerTeam; users: ManagerAssignable
     });
   }
 
+  function onToggleProductivityVisibility(next: boolean) {
+    startTransition(async () => {
+      const res = await setTeamProductivityVisibility({ teamId: team.id, visible: next });
+      if (res.ok) {
+        toast.success(
+          next
+            ? "Members can now see each other's productivity"
+            : "Productivity is private to you again",
+        );
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
+    });
+  }
+
   return (
     <div className="glass flex flex-col gap-3 p-5">
       <div className="flex items-center gap-2">
@@ -108,6 +129,21 @@ function TeamCard({ team, users }: { team: ManagerTeam; users: ManagerAssignable
           {team.members.length} member{team.members.length === 1 ? "" : "s"}
         </span>
       </div>
+
+      <label className="flex w-fit items-center gap-2 text-xs text-muted-foreground">
+        <Switch
+          size="sm"
+          checked={team.membersCanSeeProductivity}
+          onCheckedChange={onToggleProductivityVisibility}
+          disabled={isPending}
+          aria-label={
+            team.membersCanSeeProductivity
+              ? "Turn off member productivity visibility"
+              : "Turn on member productivity visibility"
+          }
+        />
+        Members can see each other&apos;s productivity
+      </label>
 
       <div className="border-border flex flex-col gap-2 rounded-lg border p-2.5 sm:flex-row sm:items-center">
         <Combobox

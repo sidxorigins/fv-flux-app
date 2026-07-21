@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { isManagerOfAnyTeam } from "@/lib/permissions";
 import { getUnreadNotificationCount } from "@/features/notifications/queries";
+import { getVisibleTeams } from "@/features/team/queries";
 import { NavLinks } from "./NavLinks";
 
 /**
@@ -13,13 +14,17 @@ export async function Sidebar() {
   const session = await auth();
   const userId = session?.user?.id;
   const isAdmin = session?.user?.globalRole === "ADMIN";
-  const [unreadCount, managesTeam] = await Promise.all([
+  const [unreadCount, managesTeam, visibleTeams] = await Promise.all([
     getUnreadNotificationCount(),
     userId ? isManagerOfAnyTeam(userId) : Promise.resolve(false),
+    userId ? getVisibleTeams() : Promise.resolve([]),
   ]);
   // /manager is server-guarded regardless (isManagerOfAnyTeam || admin) —
   // this only hides the link from users who couldn't use it anyway.
   const showManager = isAdmin || managesTeam;
+  // /team is server-guarded regardless (getVisibleTeams/getTeamProductivity)
+  // — this only hides the link from a user with no visible team.
+  const showTeam = visibleTeams.length > 0;
 
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 p-3 pr-0 lg:block">
@@ -33,7 +38,12 @@ export async function Sidebar() {
             </span>
           </span>
         </div>
-        <NavLinks isAdmin={isAdmin} showManager={showManager} unreadCount={unreadCount} />
+        <NavLinks
+          isAdmin={isAdmin}
+          showManager={showManager}
+          showTeam={showTeam}
+          unreadCount={unreadCount}
+        />
       </div>
     </aside>
   );

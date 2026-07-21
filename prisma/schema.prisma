@@ -414,13 +414,17 @@ model ApiKey {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Team {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  isActive    Boolean  @default(true)
-  managerId   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                        String   @id @default(cuid())
+  name                      String
+  description               String?
+  isActive                  Boolean  @default(true)
+  managerId                 String?
+  // Per-team on/off switch (default off — privacy): when true, team members can
+  // see teammates' productivity on the /team view. Hard-gated server-side on
+  // every read, never trusted from the client — see getTeamProductivity.
+  membersCanSeeProductivity Boolean  @default(false)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
   manager  User?            @relation("TeamManager", fields: [managerId], references: [id], onDelete: SetNull)
   members  TeamMembership[]
