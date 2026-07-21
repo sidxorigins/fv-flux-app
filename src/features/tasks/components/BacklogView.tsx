@@ -49,6 +49,7 @@ import { bulkDeleteTasks, bulkUpdateTaskStatus } from "../bulk-actions"
 import type { BacklogSortField } from "../queries"
 import type { BoardTask } from "../types"
 import { AssigneeAvatar } from "./AssigneeAvatar"
+import { CopyTaskLink } from "./CopyTaskLink"
 import { useClientNow } from "./hooks"
 import { LabelChip } from "./LabelChip"
 import { PRIORITY_META, PRIORITY_ORDER, PriorityBadge } from "./PriorityBadge"
@@ -313,6 +314,11 @@ function TaskRowCard({
           </div>
           <p className="truncate text-sm text-foreground">{task.title}</p>
         </div>
+        <CopyTaskLink
+          projectId={task.projectId}
+          taskId={task.id}
+          className="size-7 shrink-0"
+        />
         <AssigneeAvatar user={task.assignee} />
       </div>
 
@@ -574,7 +580,7 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") openTask(task.id)
                 }}
-                className="cursor-pointer outline-none focus-visible:bg-muted/50"
+                className="group/row cursor-pointer outline-none focus-visible:bg-muted/50"
               >
                 {canEdit ? (
                   <TableCell onClick={(event) => event.stopPropagation()}>
@@ -589,11 +595,16 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
                   {task.key}
                 </TableCell>
                 <TableCell className="max-w-80">
-                  <span className="flex items-center gap-1.5">
+                  <span className="flex w-full items-center gap-1.5">
                     <TypeIcon type={task.type} className="size-3.5 shrink-0" />
                     <span className="truncate text-foreground">
                       {task.title}
                     </span>
+                    <CopyTaskLink
+                      projectId={task.projectId}
+                      taskId={task.id}
+                      className="ml-auto size-6 shrink-0 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
+                    />
                   </span>
                 </TableCell>
                 <TableCell onClick={(event) => event.stopPropagation()}>

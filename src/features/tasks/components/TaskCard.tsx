@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 
 import type { BoardTask } from "../types"
 import { AssigneeAvatar } from "./AssigneeAvatar"
+import { CopyTaskLink } from "./CopyTaskLink"
 import { LabelChip } from "./LabelChip"
 import { PriorityBadge } from "./PriorityBadge"
 import { TypeIcon } from "./TypeIcon"
@@ -150,6 +151,16 @@ export function TaskCard({
             {formatDueDate(dueDate)}
           </span>
         ) : null}
+        <CopyTaskLink
+          projectId={task.projectId}
+          taskId={task.id}
+          className={cn(
+            "-my-1 -mr-1 size-6 opacity-0 transition-opacity",
+            "group-hover/card:opacity-100 focus-visible:opacity-100",
+            "motion-reduce:transition-none",
+            !dueDate && "ml-auto",
+          )}
+        />
       </div>
 
       {/* Title — max 2 lines, always readable (no strikethrough on DONE) */}
