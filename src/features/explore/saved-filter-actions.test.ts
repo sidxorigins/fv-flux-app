@@ -28,6 +28,7 @@ vi.mock("@/lib/db", () => {
     findMany: vi.fn(),
     create: vi.fn(),
     delete: vi.fn(),
+    count: vi.fn(),
   });
   const prisma: Record<string, unknown> = {
     savedFilter: model(),
@@ -44,6 +45,7 @@ interface MockModel {
   findMany: Mock;
   create: Mock;
   delete: Mock;
+  count: Mock;
 }
 interface MockPrisma {
   savedFilter: MockModel;
@@ -59,6 +61,7 @@ const FILTER_ID = "filter-1";
 beforeEach(() => {
   vi.clearAllMocks();
   mockRequireUser.mockResolvedValue(OWNER);
+  db.savedFilter.count.mockResolvedValue(0);
 });
 
 describe("createSavedFilter", () => {
@@ -87,6 +90,19 @@ describe("createSavedFilter", () => {
     const result = await createSavedFilter({ name: "Mine", query: "status=TODO" });
 
     expect(result).toEqual({ ok: false, error: "You must be signed in." });
+    expect(db.savedFilter.create).not.toHaveBeenCalled();
+  });
+
+  it("REFUSES to create once the caller is at the 50 saved-filter cap", async () => {
+    db.savedFilter.count.mockResolvedValue(50);
+
+    const result = await createSavedFilter({ name: "One too many", query: "status=TODO" });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "You've reached the maximum of 50 saved filters. Delete one first.",
+    });
+    expect(db.savedFilter.count).toHaveBeenCalledWith({ where: { userId: OWNER.id } });
     expect(db.savedFilter.create).not.toHaveBeenCalled();
   });
 });

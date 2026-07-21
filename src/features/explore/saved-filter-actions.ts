@@ -26,6 +26,9 @@ export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
   | { ok: false; error: string };
 
+/** Per-user cap on saved filters — keeps the saved-filter menu and the table bounded. */
+const MAX_SAVED_FILTERS_PER_USER = 50;
+
 function fail(error: string): { ok: false; error: string } {
   return { ok: false, error };
 }
@@ -61,6 +64,13 @@ export async function createSavedFilter(
 
   try {
     const user = await requireUser();
+
+    const existingCount = await prisma.savedFilter.count({ where: { userId: user.id } });
+    if (existingCount >= MAX_SAVED_FILTERS_PER_USER) {
+      return fail(
+        `You've reached the maximum of ${MAX_SAVED_FILTERS_PER_USER} saved filters. Delete one first.`,
+      );
+    }
 
     const savedFilter = await prisma.savedFilter.create({
       data: { userId: user.id, name, query },

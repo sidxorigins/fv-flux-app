@@ -107,8 +107,20 @@ export function ExploreFilterBar({ options, savedFilters }: ExploreFilterBarProp
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
+  // Debounced date commits fire from a `setTimeout` scheduled on an earlier
+  // render; by the time they fire, an immediate control (Select/Switch) may
+  // already have pushed a newer URL. `updateParams` must always merge onto
+  // the LATEST params, not whatever `searchParams` its own closure captured
+  // when it was created — so it reads from this ref (synced after every
+  // commit via effect, per the lint's react-hooks/refs rule against writing
+  // refs during render) instead of the `searchParams` render variable.
+  const spRef = React.useRef(searchParams)
+  React.useEffect(() => {
+    spRef.current = searchParams
+  })
+
   function updateParams(patch: Record<string, string | null>) {
-    const params = new URLSearchParams(searchParams.toString())
+    const params = new URLSearchParams(spRef.current.toString())
     for (const [key, value] of Object.entries(patch)) {
       if (value === null) params.delete(key)
       else params.set(key, value)
