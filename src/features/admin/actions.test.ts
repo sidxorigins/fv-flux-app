@@ -31,6 +31,7 @@ vi.mock("@/lib/permissions", () => {
     PROJECT_ROLE_ORDER: { VIEWER: 0, MEMBER: 1, MANAGER: 2 },
     requireProjectRole: vi.fn(),
     requireAdmin: vi.fn(),
+    requireTeamManage: vi.fn(),
   };
 });
 
@@ -65,15 +66,25 @@ vi.mock("@/lib/db", () => {
 });
 
 import { prisma } from "@/lib/db";
-import { AuthorizationError, requireAdmin, requireProjectRole } from "@/lib/permissions";
+import {
+  AuthorizationError,
+  requireAdmin,
+  requireProjectRole,
+  requireTeamManage,
+} from "@/lib/permissions";
 import { recomputeForTeam, recomputeMembership } from "@/lib/access-sync";
 import {
   addProjectMember,
+  addTeamMember,
   assignTeamManager,
+  assignTeamProject,
   createTeam,
   removeProjectMember,
+  removeTeamMember,
+  unassignTeamProject,
   updateProjectMember,
   updateTeam,
+  updateTeamProjectRole,
 } from "./actions";
 
 interface MockModel {
@@ -101,6 +112,7 @@ interface MockPrisma {
 const db = prisma as unknown as MockPrisma;
 const mockRequireProjectRole = requireProjectRole as unknown as Mock;
 const mockRequireAdmin = requireAdmin as unknown as Mock;
+const mockRequireTeamManage = requireTeamManage as unknown as Mock;
 const mockRecomputeMembership = recomputeMembership as unknown as Mock;
 const mockRecomputeForTeam = recomputeForTeam as unknown as Mock;
 
@@ -108,6 +120,7 @@ const ACTOR = { id: "actor-1", globalRole: "ADMIN" };
 const PROJECT_ID = "proj-1";
 const USER_ID = "user-1";
 const TEAM_ID = "team-1";
+const MANAGER_ID = "manager-1";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -116,6 +129,7 @@ beforeEach(() => {
   db.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(db));
   mockRequireProjectRole.mockResolvedValue({ user: ACTOR, role: "MANAGER" });
   mockRequireAdmin.mockResolvedValue(ACTOR);
+  mockRequireTeamManage.mockResolvedValue(ACTOR);
   db.auditLog.create.mockResolvedValue({});
   mockRecomputeMembership.mockResolvedValue(undefined);
   mockRecomputeForTeam.mockResolvedValue(undefined);
@@ -535,5 +549,335 @@ describe("assignTeamManager", () => {
     // access is stripped (recomputeForTeam alone only covers the current set).
     expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p1", FORMER);
     expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p2", FORMER);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Team membership + team↔project assignment (Teams Org Foundation, Task B2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("addTeamMember", () => {
+  it("requireTeamManage gates it — a non-manager/non-admin gets ok:false and never touches the DB", async () => {
+    mockRequireTeamManage.mockRejectedValue(new AuthorizationError("FORBIDDEN"));
+
+    const result = await addTeamMember({ teamId: TEAM_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do that." });
+    expect(db.teamMembership.create).not.toHaveBeenCalled();
+    expect(db.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the team doesn't exist", async () => {
+    db.team.findUnique.mockResolvedValue(null);
+    db.user.findUnique.mockResolvedValue({ id: USER_ID });
+
+    const result = await addTeamMember({ teamId: TEAM_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "Team not found." });
+    expect(db.teamMembership.create).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the user doesn't exist", async () => {
+    db.team.findUnique.mockResolvedValue({ id: TEAM_ID });
+    db.user.findUnique.mockResolvedValue(null);
+
+    const result = await addTeamMember({ teamId: TEAM_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "User not found." });
+    expect(db.teamMembership.create).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent when the user is already a member", async () => {
+    db.team.findUnique.mockResolvedValue({ id: TEAM_ID });
+    db.user.findUnique.mockResolvedValue({ id: USER_ID });
+    db.teamMembership.findUnique.mockResolvedValue({ id: "existing-row" });
+
+    const result = await addTeamMember({ teamId: TEAM_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.teamMembership.create).not.toHaveBeenCalled();
+    expect(mockRecomputeMembership).not.toHaveBeenCalled();
+    expect(db.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("creates the TeamMembership, recomputes the new member across the team's projects, and audits team.member_added", async () => {
+    db.team.findUnique.mockResolvedValue({ id: TEAM_ID });
+    db.user.findUnique.mockResolvedValue({ id: USER_ID });
+    db.teamMembership.findUnique.mockResolvedValue(null);
+    db.teamMembership.create.mockResolvedValue({});
+    db.teamProject.findMany.mockResolvedValue([
+      { projectId: "p1" },
+      { projectId: "p2" },
+    ]);
+
+    const result = await addTeamMember({ teamId: TEAM_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.teamMembership.create).toHaveBeenCalledWith({
+      data: { teamId: TEAM_ID, userId: USER_ID },
+    });
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p1", USER_ID);
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p2", USER_ID);
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: ACTOR.id,
+          action: "team.member_added",
+          targetType: "TeamMembership",
+          targetId: USER_ID,
+          metadata: { teamId: TEAM_ID, userId: USER_ID },
+        }),
+      }),
+    );
+  });
+});
+
+describe("removeTeamMember", () => {
+  it("requireTeamManage gates it — a non-manager/non-admin gets ok:false and never touches the DB", async () => {
+    mockRequireTeamManage.mockRejectedValue(new AuthorizationError("FORBIDDEN"));
+
+    const result = await removeTeamMember({ teamId: TEAM_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do that." });
+    expect(db.teamMembership.delete).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent when no membership row exists", async () => {
+    db.teamMembership.findUnique.mockResolvedValue(null);
+
+    const result = await removeTeamMember({ teamId: TEAM_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.teamMembership.delete).not.toHaveBeenCalled();
+    expect(mockRecomputeMembership).not.toHaveBeenCalled();
+    expect(db.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("CRITICAL: deletes the TeamMembership and recomputes the REMOVED user across the team's projects, then audits team.member_removed", async () => {
+    db.teamMembership.findUnique.mockResolvedValue({ id: "existing-row" });
+    db.teamMembership.delete.mockResolvedValue({});
+    db.teamProject.findMany.mockResolvedValue([
+      { projectId: "p1" },
+      { projectId: "p2" },
+    ]);
+
+    const result = await removeTeamMember({ teamId: TEAM_ID, userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.teamMembership.delete).toHaveBeenCalledWith({
+      where: { teamId_userId: { teamId: TEAM_ID, userId: USER_ID } },
+    });
+    // The removed user is no longer in the team's current member set, so
+    // recomputeForTeam alone would never re-evaluate them — they must be
+    // recomputed explicitly across every project the team is assigned to.
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p1", USER_ID);
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p2", USER_ID);
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: ACTOR.id,
+          action: "team.member_removed",
+          targetType: "TeamMembership",
+          targetId: USER_ID,
+          metadata: { teamId: TEAM_ID, userId: USER_ID },
+        }),
+      }),
+    );
+  });
+});
+
+describe("assignTeamProject", () => {
+  it("requires admin — non-admin gets ok:false and never touches the DB", async () => {
+    mockRequireAdmin.mockRejectedValue(new AuthorizationError("FORBIDDEN"));
+
+    const result = await assignTeamProject({ teamId: TEAM_ID, projectId: PROJECT_ID, role: "MEMBER" });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do that." });
+    expect(db.teamProject.upsert).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the team doesn't exist", async () => {
+    db.team.findUnique.mockResolvedValue(null);
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID });
+
+    const result = await assignTeamProject({ teamId: TEAM_ID, projectId: PROJECT_ID, role: "MEMBER" });
+
+    expect(result).toEqual({ ok: false, error: "Team not found." });
+    expect(db.teamProject.upsert).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the project doesn't exist", async () => {
+    db.team.findUnique.mockResolvedValue({ id: TEAM_ID, managerId: null });
+    db.project.findUnique.mockResolvedValue(null);
+
+    const result = await assignTeamProject({ teamId: TEAM_ID, projectId: PROJECT_ID, role: "MEMBER" });
+
+    expect(result).toEqual({ ok: false, error: "Project not found." });
+    expect(db.teamProject.upsert).not.toHaveBeenCalled();
+  });
+
+  it("upserts the TeamProject idempotently, recomputes the team's members+manager for that project, and audits team.project_assigned", async () => {
+    db.team.findUnique.mockResolvedValue({ id: TEAM_ID, managerId: MANAGER_ID });
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID });
+    db.teamProject.upsert.mockResolvedValue({});
+    db.teamMembership.findMany.mockResolvedValue([
+      { userId: "m1" },
+      { userId: "m2" },
+    ]);
+
+    const result = await assignTeamProject({ teamId: TEAM_ID, projectId: PROJECT_ID, role: "MEMBER" });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.teamProject.upsert).toHaveBeenCalledWith({
+      where: { teamId_projectId: { teamId: TEAM_ID, projectId: PROJECT_ID } },
+      update: { role: "MEMBER" },
+      create: { teamId: TEAM_ID, projectId: PROJECT_ID, role: "MEMBER" },
+    });
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, "m1");
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, "m2");
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, MANAGER_ID);
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: ACTOR.id,
+          action: "team.project_assigned",
+          targetType: "TeamProject",
+          targetId: TEAM_ID,
+          metadata: { teamId: TEAM_ID, projectId: PROJECT_ID, role: "MEMBER" },
+        }),
+      }),
+    );
+  });
+
+  it("does not double-recompute when the team has no manager", async () => {
+    db.team.findUnique.mockResolvedValue({ id: TEAM_ID, managerId: null });
+    db.project.findUnique.mockResolvedValue({ id: PROJECT_ID });
+    db.teamProject.upsert.mockResolvedValue({});
+    db.teamMembership.findMany.mockResolvedValue([{ userId: "m1" }]);
+
+    const result = await assignTeamProject({ teamId: TEAM_ID, projectId: PROJECT_ID, role: "VIEWER" });
+
+    expect(result).toEqual({ ok: true });
+    expect(mockRecomputeMembership).toHaveBeenCalledTimes(1);
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, "m1");
+  });
+});
+
+describe("updateTeamProjectRole", () => {
+  it("requires admin — non-admin gets ok:false", async () => {
+    mockRequireAdmin.mockRejectedValue(new AuthorizationError("FORBIDDEN"));
+
+    const result = await updateTeamProjectRole({ teamId: TEAM_ID, projectId: PROJECT_ID, role: "MANAGER" });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do that." });
+    expect(db.teamProject.update).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the team isn't assigned to that project", async () => {
+    db.teamProject.findUnique.mockResolvedValue(null);
+
+    const result = await updateTeamProjectRole({ teamId: TEAM_ID, projectId: PROJECT_ID, role: "MANAGER" });
+
+    expect(result).toEqual({ ok: false, error: "This team isn't assigned to that project." });
+    expect(db.teamProject.update).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent when the requested role matches the existing role", async () => {
+    db.teamProject.findUnique.mockResolvedValue({ role: "MEMBER" });
+
+    const result = await updateTeamProjectRole({ teamId: TEAM_ID, projectId: PROJECT_ID, role: "MEMBER" });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.teamProject.update).not.toHaveBeenCalled();
+    expect(mockRecomputeMembership).not.toHaveBeenCalled();
+  });
+
+  it("changes the role, recomputes the team's members+manager for that project, and audits team.project_role_changed with from/to", async () => {
+    db.teamProject.findUnique.mockResolvedValue({ role: "MEMBER" });
+    db.teamProject.update.mockResolvedValue({});
+    db.team.findUnique.mockResolvedValue({ managerId: MANAGER_ID });
+    db.teamMembership.findMany.mockResolvedValue([{ userId: "m1" }]);
+
+    const result = await updateTeamProjectRole({ teamId: TEAM_ID, projectId: PROJECT_ID, role: "MANAGER" });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.teamProject.update).toHaveBeenCalledWith({
+      where: { teamId_projectId: { teamId: TEAM_ID, projectId: PROJECT_ID } },
+      data: { role: "MANAGER" },
+    });
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, "m1");
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, MANAGER_ID);
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: ACTOR.id,
+          action: "team.project_role_changed",
+          targetType: "TeamProject",
+          targetId: TEAM_ID,
+          metadata: { teamId: TEAM_ID, projectId: PROJECT_ID, from: "MEMBER", to: "MANAGER" },
+        }),
+      }),
+    );
+  });
+});
+
+describe("unassignTeamProject", () => {
+  it("requires admin — non-admin gets ok:false", async () => {
+    mockRequireAdmin.mockRejectedValue(new AuthorizationError("FORBIDDEN"));
+
+    const result = await unassignTeamProject({ teamId: TEAM_ID, projectId: PROJECT_ID });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do that." });
+    expect(db.teamProject.delete).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent when the team isn't assigned to that project", async () => {
+    db.teamProject.findUnique.mockResolvedValue(null);
+
+    const result = await unassignTeamProject({ teamId: TEAM_ID, projectId: PROJECT_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.teamProject.delete).not.toHaveBeenCalled();
+    expect(mockRecomputeMembership).not.toHaveBeenCalled();
+    expect(db.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("CRITICAL: captures the team's members+manager BEFORE deleting, then recomputes each captured user for that project, and audits team.project_unassigned", async () => {
+    db.teamProject.findUnique.mockResolvedValue({ role: "MEMBER" });
+    db.team.findUnique.mockResolvedValue({ managerId: MANAGER_ID });
+    db.teamMembership.findMany.mockResolvedValue([
+      { userId: "m1" },
+      { userId: "m2" },
+    ]);
+    db.teamProject.delete.mockResolvedValue({});
+
+    const result = await unassignTeamProject({ teamId: TEAM_ID, projectId: PROJECT_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.teamProject.delete).toHaveBeenCalledWith({
+      where: { teamId_projectId: { teamId: TEAM_ID, projectId: PROJECT_ID } },
+    });
+    // These users are no longer in the team's post-mutation derivation set for
+    // this project — recomputeMembership must be called for each of them
+    // explicitly so any TeamProject-derived access they held is stripped.
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, "m1");
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, "m2");
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, PROJECT_ID, MANAGER_ID);
+    // The capture (team + members lookup) must happen before the delete so the
+    // pre-mutation set is used, not a truncated post-delete one.
+    const teamLookupOrder = db.team.findUnique.mock.invocationCallOrder[0];
+    const deleteOrder = db.teamProject.delete.mock.invocationCallOrder[0];
+    expect(teamLookupOrder).toBeLessThan(deleteOrder);
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: ACTOR.id,
+          action: "team.project_unassigned",
+          targetType: "TeamProject",
+          targetId: TEAM_ID,
+          metadata: { teamId: TEAM_ID, projectId: PROJECT_ID, role: "MEMBER" },
+        }),
+      }),
+    );
   });
 });
