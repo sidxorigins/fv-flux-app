@@ -9,6 +9,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     user: { findUnique: vi.fn() },
     projectMembership: { findUnique: vi.fn() },
+    team: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn() },
   },
 }));
 
@@ -19,10 +20,15 @@ import {
   PROJECT_ROLE_ORDER,
   canEditTasks,
   canManageProject,
+  canManageProjectLeads,
+  canManageTeam,
   canViewProject,
   getProjectRole,
+  isManagerOfAnyTeam,
+  managedTeamIds,
   requireAdmin,
   requireProjectRole,
+  requireTeamManage,
   requireUser,
 } from "./permissions";
 import type { User } from "@/generated/prisma/client";
@@ -30,6 +36,9 @@ import type { User } from "@/generated/prisma/client";
 const mockAuth = auth as unknown as Mock;
 const mockFindUser = prisma.user.findUnique as unknown as Mock;
 const mockFindMembership = prisma.projectMembership.findUnique as unknown as Mock;
+const mockFindTeam = prisma.team.findUnique as unknown as Mock;
+const mockFindManyTeams = prisma.team.findMany as unknown as Mock;
+const mockCountTeams = prisma.team.count as unknown as Mock;
 
 function makeUser(overrides: Partial<User> = {}): User {
   return {
@@ -225,5 +234,109 @@ describe("convenience wrappers", () => {
     await expect(canManageProject("proj-1")).resolves.toMatchObject({
       role: "MANAGER",
     });
+  });
+});
+
+describe("canManageTeam", () => {
+  it("is true for a global ADMIN, regardless of team ownership", async () => {
+    mockFindUser.mockResolvedValue({ globalRole: "ADMIN" });
+    await expect(canManageTeam("admin-1", "team-1")).resolves.toBe(true);
+    // Admin short-circuits — the team table must not even be queried.
+    expect(mockFindTeam).not.toHaveBeenCalled();
+  });
+
+  it("is true when the user is the team's managerId", async () => {
+    mockFindUser.mockResolvedValue({ globalRole: "USER" });
+    mockFindTeam.mockResolvedValue({ managerId: "user-1" });
+    await expect(canManageTeam("user-1", "team-1")).resolves.toBe(true);
+  });
+
+  it("is false for a non-admin, non-manager user", async () => {
+    mockFindUser.mockResolvedValue({ globalRole: "USER" });
+    mockFindTeam.mockResolvedValue({ managerId: "someone-else" });
+    await expect(canManageTeam("user-1", "team-1")).resolves.toBe(false);
+  });
+
+  it("is false when the team does not exist", async () => {
+    mockFindUser.mockResolvedValue({ globalRole: "USER" });
+    mockFindTeam.mockResolvedValue(null);
+    await expect(canManageTeam("user-1", "team-1")).resolves.toBe(false);
+  });
+});
+
+describe("requireTeamManage", () => {
+  it("returns the user for a global ADMIN without checking the team's manager", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "admin-1" } });
+    const admin = makeUser({ id: "admin-1", globalRole: "ADMIN" });
+    mockFindUser.mockResolvedValue(admin);
+    await expect(requireTeamManage("team-1")).resolves.toEqual(admin);
+    expect(mockFindTeam).not.toHaveBeenCalled();
+  });
+
+  it("returns the user when they are the team's manager", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } });
+    const manager = makeUser({ id: "user-1", globalRole: "USER" });
+    mockFindUser.mockResolvedValue(manager);
+    mockFindTeam.mockResolvedValue({ managerId: "user-1" });
+    await expect(requireTeamManage("team-1")).resolves.toEqual(manager);
+  });
+
+  it("throws AuthorizationError(FORBIDDEN) for a non-manager, non-admin", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } });
+    mockFindUser.mockResolvedValue(makeUser({ id: "user-1", globalRole: "USER" }));
+    mockFindTeam.mockResolvedValue({ managerId: "someone-else" });
+    await expectAuthError(requireTeamManage("team-1"), "FORBIDDEN");
+  });
+
+  it("throws AuthorizationError(FORBIDDEN) when the team does not exist", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } });
+    mockFindUser.mockResolvedValue(makeUser({ id: "user-1", globalRole: "USER" }));
+    mockFindTeam.mockResolvedValue(null);
+    await expectAuthError(requireTeamManage("team-1"), "FORBIDDEN");
+  });
+});
+
+describe("managedTeamIds", () => {
+  it("returns only the ids of teams the user manages", async () => {
+    mockFindManyTeams.mockResolvedValue([{ id: "team-1" }, { id: "team-2" }]);
+    await expect(managedTeamIds("user-1")).resolves.toEqual(["team-1", "team-2"]);
+    expect(mockFindManyTeams).toHaveBeenCalledWith({
+      where: { managerId: "user-1" },
+      select: { id: true },
+    });
+  });
+
+  it("returns an empty array when the user manages no teams", async () => {
+    mockFindManyTeams.mockResolvedValue([]);
+    await expect(managedTeamIds("user-1")).resolves.toEqual([]);
+  });
+});
+
+describe("isManagerOfAnyTeam", () => {
+  it("is true when the user manages at least one team", async () => {
+    mockCountTeams.mockResolvedValue(1);
+    await expect(isManagerOfAnyTeam("user-1")).resolves.toBe(true);
+  });
+
+  it("is true when the user manages several teams", async () => {
+    mockCountTeams.mockResolvedValue(3);
+    await expect(isManagerOfAnyTeam("user-1")).resolves.toBe(true);
+  });
+
+  it("is false when the user manages no teams", async () => {
+    mockCountTeams.mockResolvedValue(0);
+    await expect(isManagerOfAnyTeam("user-1")).resolves.toBe(false);
+  });
+});
+
+describe("canManageProjectLeads", () => {
+  it("is true for a global ADMIN", () => {
+    const admin = makeUser({ globalRole: "ADMIN" });
+    expect(canManageProjectLeads(admin)).toBe(true);
+  });
+
+  it("is false for a regular USER", () => {
+    const user = makeUser({ globalRole: "USER" });
+    expect(canManageProjectLeads(user)).toBe(false);
   });
 });

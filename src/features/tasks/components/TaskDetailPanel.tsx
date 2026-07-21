@@ -179,6 +179,14 @@ export function TaskDetailPanel({
     })
   }
 
+  function onEstimatedHoursChange(estimatedHours: number | null) {
+    startTransition(async () => {
+      const res = await updateTask({ taskId: task.id, estimatedHours })
+      if (!res.ok) toast.error(res.error)
+      router.refresh()
+    })
+  }
+
   function onLabelsChange(labelIds: string[]) {
     startTransition(async () => {
       const res = await updateTask({ taskId: task.id, labelIds })
@@ -456,6 +464,7 @@ export function TaskDetailPanel({
       onTypeChange={canEdit ? onTypeChange : undefined}
       onAssigneeChange={canEdit ? onAssigneeChange : undefined}
       onDueDateChange={canEdit ? onDueDateChange : undefined}
+      onEstimatedHoursChange={canEdit ? onEstimatedHoursChange : undefined}
       onLabelsChange={canEdit ? onLabelsChange : undefined}
     />
   )

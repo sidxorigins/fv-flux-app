@@ -8,7 +8,7 @@
 // so the client table/list components stay thin and never re-derive shapes.
 
 import { prisma } from "@/lib/db";
-import { requireAdmin, requireProjectRole } from "@/lib/permissions";
+import { requireAdmin, requireProjectRole, requireTeamManage } from "@/lib/permissions";
 import type { Prisma } from "@/generated/prisma/client";
 import type { GlobalRole, ProjectRole, UserStatus } from "@/generated/prisma/enums";
 import { buildTargetLabel, type AuditTargetLookups } from "./audit-target";
@@ -332,6 +332,184 @@ export async function getProjectMembers(
       grantedAtLabel: dateFmt.format(m.createdAt),
     })),
   };
+}
+
+// ── Teams (Teams Org Foundation) ───────────────────────────────────────────
+export interface AdminTeamRow {
+  id: string;
+  name: string;
+  isActive: boolean;
+  managerName: string | null;
+  memberCount: number;
+  projectCount: number;
+}
+
+export async function getTeams(): Promise<AdminTeamRow[]> {
+  await requireAdmin();
+  const teams = await prisma.team.findMany({
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+      manager: { select: { name: true } },
+      _count: { select: { members: true, projects: true } },
+    },
+  });
+  return teams.map((t) => ({
+    id: t.id,
+    name: t.name,
+    isActive: t.isActive,
+    managerName: t.manager?.name ?? null,
+    memberCount: t._count.members,
+    projectCount: t._count.projects,
+  }));
+}
+
+export interface AdminTeamMember {
+  userId: string;
+  name: string;
+  username: string;
+}
+
+export interface AdminTeamProject {
+  projectId: string;
+  key: string;
+  name: string;
+  role: ProjectRole;
+  leads: string[];
+}
+
+export interface AdminTeamDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  managerId: string | null;
+  managerName: string | null;
+  members: AdminTeamMember[];
+  projects: AdminTeamProject[];
+}
+
+/**
+ * A single team's detail. Authorised for a global Admin OR the team's own
+ * MANAGER (delegation clause, mirrors `getProjectMembers`) — the B4 UI's
+ * detail-page guard relies on this so a team manager can view/manage their
+ * own team without global Admin rights.
+ */
+export async function getTeam(teamId: string): Promise<AdminTeamDetail | null> {
+  await requireTeamManage(teamId);
+
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      isActive: true,
+      managerId: true,
+      manager: { select: { name: true } },
+      members: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          user: { select: { id: true, name: true, username: true } },
+        },
+      },
+      projects: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          role: true,
+          project: {
+            select: {
+              id: true,
+              key: true,
+              name: true,
+              lead: { select: { name: true } },
+              additionalLeads: { select: { user: { select: { name: true } } } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!team) return null;
+
+  return {
+    id: team.id,
+    name: team.name,
+    description: team.description,
+    isActive: team.isActive,
+    managerId: team.managerId,
+    managerName: team.manager?.name ?? null,
+    members: team.members.map((m) => ({
+      userId: m.user.id,
+      name: m.user.name,
+      username: m.user.username,
+    })),
+    projects: team.projects.map((tp) => ({
+      projectId: tp.project.id,
+      key: tp.project.key,
+      name: tp.project.name,
+      role: tp.role,
+      leads: [
+        tp.project.lead.name,
+        ...tp.project.additionalLeads.map((l) => l.user.name),
+      ],
+    })),
+  };
+}
+
+// ── Project leads (Teams Org Foundation, Task B3) ──────────────────────────
+export interface AdminProjectLead {
+  userId: string;
+  name: string;
+  username: string;
+  isPrimary: boolean;
+}
+
+export interface AdminProjectLeads {
+  primaryLeadId: string;
+  leads: AdminProjectLead[];
+}
+
+/**
+ * The union of a project's primary lead (`Project.leadId`) and its co-leads
+ * (`ProjectLead` rows) — the same set `recomputeMembership` treats as a
+ * MANAGER source. Admin-only, mirroring the other project-lead actions.
+ */
+export async function getProjectLeads(projectId: string): Promise<AdminProjectLeads> {
+  await requireAdmin();
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      leadId: true,
+      lead: { select: { id: true, name: true, username: true } },
+      additionalLeads: {
+        select: { user: { select: { id: true, name: true, username: true } } },
+      },
+    },
+  });
+  if (!project) return { primaryLeadId: "", leads: [] };
+
+  const byId = new Map<string, AdminProjectLead>();
+  byId.set(project.lead.id, {
+    userId: project.lead.id,
+    name: project.lead.name,
+    username: project.lead.username,
+    isPrimary: true,
+  });
+  for (const { user } of project.additionalLeads) {
+    if (byId.has(user.id)) continue; // primary already covers this user
+    byId.set(user.id, {
+      userId: user.id,
+      name: user.name,
+      username: user.username,
+      isPrimary: user.id === project.leadId,
+    });
+  }
+
+  return { primaryLeadId: project.leadId, leads: [...byId.values()] };
 }
 
 // ── Audit log ───────────────────────────────────────────────────────────────

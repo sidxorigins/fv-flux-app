@@ -279,6 +279,7 @@ export async function updateTask(
         priority: true,
         assigneeId: true,
         dueDate: true,
+        estimatedHours: true,
         labels: { select: { id: true } },
       },
     });
@@ -341,6 +342,17 @@ export async function updateTask(
       if (curIso !== nextIso) {
         updateData.dueDate = nextDue;
         activities.push({ field: "dueDate", oldValue: curIso, newValue: nextIso });
+      }
+    }
+    if (data.estimatedHours !== undefined) {
+      const nextHours = data.estimatedHours ?? null;
+      if (nextHours !== current.estimatedHours) {
+        updateData.estimatedHours = nextHours;
+        activities.push({
+          field: "estimatedHours",
+          oldValue: current.estimatedHours !== null ? String(current.estimatedHours) : null,
+          newValue: nextHours !== null ? String(nextHours) : null,
+        });
       }
     }
     if (data.description !== undefined) {

@@ -43,6 +43,7 @@ export const updateTaskSchema = z.object({
   priority: z.enum(TaskPriority).optional(),
   assigneeId: id.nullable().optional(),
   dueDate: z.coerce.date().nullable().optional(),
+  estimatedHours: z.number().min(0).max(10000).nullable().optional(),
   labelIds: z.array(id).optional(),
 });
 

@@ -90,6 +90,58 @@ export const removeMembershipSchema = z.object({
   userId: z.string().min(1, "Missing user id"),
 });
 
+// ── Teams (Teams Org Foundation) ─────────────────────────────────────────────
+export const createTeamSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(500).optional(),
+});
+
+export const updateTeamSchema = z.object({
+  teamId: z.string().min(1),
+  name: z.string().trim().min(1).max(80).optional(),
+  description: z.string().trim().max(500).nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const assignTeamManagerSchema = z.object({
+  teamId: z.string().min(1),
+  managerId: z.string().min(1).nullable(),
+});
+
+// ── Teams: membership + project assignment (Phase B, Task B2) ───────────────
+export const teamMemberSchema = z.object({
+  teamId: z.string().min(1, "Missing team id"),
+  userId: z.string().min(1, "Missing user id"),
+});
+
+export const teamProjectSchema = z.object({
+  teamId: z.string().min(1, "Missing team id"),
+  projectId: z.string().min(1, "Missing project id"),
+  role: projectRoleSchema,
+});
+
+export const teamProjectRoleSchema = z.object({
+  teamId: z.string().min(1, "Missing team id"),
+  projectId: z.string().min(1, "Missing project id"),
+  role: projectRoleSchema,
+});
+
+export const teamProjectRemoveSchema = z.object({
+  teamId: z.string().min(1, "Missing team id"),
+  projectId: z.string().min(1, "Missing project id"),
+});
+
+// ── Project leads (Phase B, Task B3) ─────────────────────────────────────────
+export const projectLeadSchema = z.object({
+  projectId: z.string().min(1, "Missing project id"),
+  userId: z.string().min(1, "Missing user id"),
+});
+
+export const setPrimaryLeadSchema = z.object({
+  projectId: z.string().min(1, "Missing project id"),
+  userId: z.string().min(1, "Missing user id"),
+});
+
 // ── Audit log query ─────────────────────────────────────────────────────────
 export const auditQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
@@ -113,3 +165,12 @@ export type UpdateMembershipInput = z.infer<typeof updateMembershipSchema>;
 export type RemoveMembershipInput = z.infer<typeof removeMembershipSchema>;
 export type AuditQueryInput = z.infer<typeof auditQuerySchema>;
 export type UserSearchInput = z.infer<typeof userSearchSchema>;
+export type CreateTeamInput = z.infer<typeof createTeamSchema>;
+export type UpdateTeamInput = z.infer<typeof updateTeamSchema>;
+export type AssignTeamManagerInput = z.infer<typeof assignTeamManagerSchema>;
+export type TeamMemberInput = z.infer<typeof teamMemberSchema>;
+export type TeamProjectInput = z.infer<typeof teamProjectSchema>;
+export type TeamProjectRoleInput = z.infer<typeof teamProjectRoleSchema>;
+export type TeamProjectRemoveInput = z.infer<typeof teamProjectRemoveSchema>;
+export type ProjectLeadInput = z.infer<typeof projectLeadSchema>;
+export type SetPrimaryLeadInput = z.infer<typeof setPrimaryLeadSchema>;
