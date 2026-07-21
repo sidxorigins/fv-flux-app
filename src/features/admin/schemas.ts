@@ -108,6 +108,12 @@ export const assignTeamManagerSchema = z.object({
   managerId: z.string().min(1).nullable(),
 });
 
+/** Toggle whether team members can see teammates' productivity (Team Productivity Visibility #8). */
+export const teamVisibilitySchema = z.object({
+  teamId: z.string().min(1),
+  visible: z.boolean(),
+});
+
 // ── Teams: membership + project assignment (Phase B, Task B2) ───────────────
 export const teamMemberSchema = z.object({
   teamId: z.string().min(1, "Missing team id"),
@@ -168,6 +174,7 @@ export type UserSearchInput = z.infer<typeof userSearchSchema>;
 export type CreateTeamInput = z.infer<typeof createTeamSchema>;
 export type UpdateTeamInput = z.infer<typeof updateTeamSchema>;
 export type AssignTeamManagerInput = z.infer<typeof assignTeamManagerSchema>;
+export type TeamVisibilityInput = z.infer<typeof teamVisibilitySchema>;
 export type TeamMemberInput = z.infer<typeof teamMemberSchema>;
 export type TeamProjectInput = z.infer<typeof teamProjectSchema>;
 export type TeamProjectRoleInput = z.infer<typeof teamProjectRoleSchema>;

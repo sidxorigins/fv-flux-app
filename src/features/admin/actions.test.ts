@@ -84,6 +84,7 @@ import {
   removeProjectMember,
   removeTeamMember,
   setPrimaryLead,
+  setTeamProductivityVisibility,
   unassignTeamProject,
   updateProjectMember,
   updateTeam,
@@ -694,6 +695,71 @@ describe("removeTeamMember", () => {
           targetType: "TeamMembership",
           targetId: USER_ID,
           metadata: { teamId: TEAM_ID, userId: USER_ID },
+        }),
+      }),
+    );
+  });
+});
+
+describe("setTeamProductivityVisibility", () => {
+  it("requireTeamManage gates it — a non-manager/non-admin gets ok:false and never touches the DB", async () => {
+    mockRequireTeamManage.mockRejectedValue(new AuthorizationError("FORBIDDEN"));
+
+    const result = await setTeamProductivityVisibility({ teamId: TEAM_ID, visible: true });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do that." });
+    expect(db.team.update).not.toHaveBeenCalled();
+    expect(db.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("returns not-found when the team doesn't exist", async () => {
+    db.team.findUnique.mockResolvedValue(null);
+
+    const result = await setTeamProductivityVisibility({ teamId: TEAM_ID, visible: true });
+
+    expect(result).toEqual({ ok: false, error: "Team not found." });
+    expect(db.team.update).not.toHaveBeenCalled();
+  });
+
+  it("writes membersCanSeeProductivity and audits team.productivity_visibility_changed", async () => {
+    db.team.findUnique.mockResolvedValue({ id: TEAM_ID });
+    db.team.update.mockResolvedValue({});
+
+    const result = await setTeamProductivityVisibility({ teamId: TEAM_ID, visible: true });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.team.update).toHaveBeenCalledWith({
+      where: { id: TEAM_ID },
+      data: { membersCanSeeProductivity: true },
+    });
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: ACTOR.id,
+          action: "team.productivity_visibility_changed",
+          targetType: "Team",
+          targetId: TEAM_ID,
+          metadata: { teamId: TEAM_ID, visible: true },
+        }),
+      }),
+    );
+  });
+
+  it("writes visible:false to turn productivity visibility back off", async () => {
+    db.team.findUnique.mockResolvedValue({ id: TEAM_ID });
+    db.team.update.mockResolvedValue({});
+
+    const result = await setTeamProductivityVisibility({ teamId: TEAM_ID, visible: false });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.team.update).toHaveBeenCalledWith({
+      where: { id: TEAM_ID },
+      data: { membersCanSeeProductivity: false },
+    });
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: { teamId: TEAM_ID, visible: false },
         }),
       }),
     );
