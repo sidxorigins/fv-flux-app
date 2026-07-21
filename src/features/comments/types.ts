@@ -1,5 +1,7 @@
 import type { Attachment, Comment, User } from "@/generated/prisma/client";
 
+import type { CommentReactionGroup } from "./reactions";
+
 /** Author fields safe to expose to the client — never hashedPassword/email/etc. */
 export type CommentAuthor = Pick<User, "id" | "name" | "username" | "avatarKey">;
 
@@ -13,8 +15,13 @@ export type CommentAttachment = Pick<
   "id" | "filename" | "contentType" | "size" | "uploaderId"
 >;
 
-/** A comment hydrated with its author and attachments, as returned by `getComments`. */
+/**
+ * A comment hydrated with its author, attachments, and reactions, as returned
+ * by `getComments`. `reactions` is the grouped-per-emoji summary (see
+ * `groupReactions`) — never the raw `CommentReaction` rows.
+ */
 export type CommentWithAuthor = Comment & {
   author: CommentAuthor;
   attachments: CommentAttachment[];
+  reactions: CommentReactionGroup[];
 };

@@ -5,6 +5,7 @@
 import { prisma } from "@/lib/db";
 import { requireProjectRole } from "@/lib/permissions";
 
+import { groupReactions } from "./reactions";
 import type { CommentWithAuthor } from "./types";
 
 /**
@@ -20,9 +21,9 @@ export async function getComments(taskId: string): Promise<CommentWithAuthor[]> 
   });
   if (!task) return [];
 
-  await requireProjectRole(task.projectId, "VIEWER");
+  const { user } = await requireProjectRole(task.projectId, "VIEWER");
 
-  return prisma.comment.findMany({
+  const comments = await prisma.comment.findMany({
     where: { taskId },
     orderBy: { createdAt: "asc" },
     include: {
@@ -39,6 +40,15 @@ export async function getComments(taskId: string): Promise<CommentWithAuthor[]> 
           uploaderId: true,
         },
       },
+      reactions: {
+        select: { emoji: true, userId: true, user: { select: { name: true } } },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
+
+  return comments.map((row) => ({
+    ...row,
+    reactions: groupReactions(row.reactions, user.id),
+  }));
 }
