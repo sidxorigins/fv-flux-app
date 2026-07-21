@@ -3,7 +3,12 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { getProjectMembers, listAssignableUsers } from "@/features/admin/queries";
+import {
+  getProjectLeads,
+  getProjectMembers,
+  listAssignableUsers,
+} from "@/features/admin/queries";
+import { ProjectLeadsEditor } from "@/features/admin/components/ProjectLeadsEditor";
 import { ProjectMembersEditor } from "@/features/admin/components/ProjectMembersEditor";
 
 interface ProjectDetailPageProps {
@@ -15,9 +20,10 @@ export default async function AdminProjectDetailPage({
 }: ProjectDetailPageProps) {
   const { projectId } = await params;
 
-  const [data, users] = await Promise.all([
+  const [data, users, leads] = await Promise.all([
     getProjectMembers(projectId),
     listAssignableUsers(),
+    getProjectLeads(projectId),
   ]);
   if (!data) notFound();
 
@@ -48,6 +54,23 @@ export default async function AdminProjectDetailPage({
           <p className="max-w-prose text-sm text-muted-foreground">{project.description}</p>
         ) : null}
         <p className="text-xs text-muted-foreground">Lead: {project.leadName}</p>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-0.5">
+          <h3 className="text-base font-semibold text-foreground">Project leads</h3>
+          <p className="text-sm text-muted-foreground">
+            The primary lead is the project&rsquo;s required owner; co-leads share the
+            same Manager-level access. Set another primary before removing the
+            current one.
+          </p>
+        </div>
+        <ProjectLeadsEditor
+          projectId={project.id}
+          projectName={project.name}
+          leads={leads.leads}
+          users={users}
+        />
       </div>
 
       <div className="flex flex-col gap-3">
