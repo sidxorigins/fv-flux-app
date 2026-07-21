@@ -61,7 +61,7 @@ vi.mock("@/lib/db", () => {
 
 import { prisma } from "@/lib/db";
 import { AuthorizationError, requireProjectRole } from "@/lib/permissions";
-import { createTask, moveTask } from "./actions";
+import { createTask, moveTask, updateTask } from "./actions";
 import { POSITION_STEP, computeMidpoint } from "./positioning";
 
 interface MockModel {
@@ -221,6 +221,84 @@ describe("createTask — key generation", () => {
       ok: false,
       error: "One or more labels don't belong to this project.",
     });
+  });
+});
+
+describe("updateTask — estimatedHours", () => {
+  const CURRENT_TASK = {
+    id: "task-1",
+    projectId: "proj-1",
+    title: "Ship the thing",
+    description: null,
+    type: "TASK",
+    status: "TODO",
+    priority: "MEDIUM",
+    assigneeId: null,
+    dueDate: null,
+    estimatedHours: null,
+    labels: [],
+  };
+
+  it("threads a new estimatedHours into the update data and logs the change", async () => {
+    db.task.findUnique.mockResolvedValue(CURRENT_TASK);
+    db.task.update.mockResolvedValue({});
+    db.activityLog.createMany.mockResolvedValue({});
+
+    const result = await updateTask({ taskId: "task-1", estimatedHours: 6.5 });
+
+    expect(result).toEqual({ ok: true, data: { id: "task-1" } });
+    expect(db.task.update).toHaveBeenCalledWith({
+      where: { id: "task-1" },
+      data: { estimatedHours: 6.5 },
+    });
+    expect(db.activityLog.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          field: "estimatedHours",
+          oldValue: null,
+          newValue: "6.5",
+        }),
+      ],
+    });
+  });
+
+  it("clears estimatedHours to null and logs old -> new as stringified values", async () => {
+    db.task.findUnique.mockResolvedValue({ ...CURRENT_TASK, estimatedHours: 6.5 });
+    db.task.update.mockResolvedValue({});
+    db.activityLog.createMany.mockResolvedValue({});
+
+    const result = await updateTask({ taskId: "task-1", estimatedHours: null });
+
+    expect(result.ok).toBe(true);
+    expect(db.task.update).toHaveBeenCalledWith({
+      where: { id: "task-1" },
+      data: { estimatedHours: null },
+    });
+    expect(db.activityLog.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          field: "estimatedHours",
+          oldValue: "6.5",
+          newValue: null,
+        }),
+      ],
+    });
+  });
+
+  it("no-ops (no DB write, no activity log) when estimatedHours is unchanged", async () => {
+    db.task.findUnique.mockResolvedValue({ ...CURRENT_TASK, estimatedHours: 10 });
+
+    const result = await updateTask({ taskId: "task-1", estimatedHours: 10 });
+
+    expect(result).toEqual({ ok: true, data: { id: "task-1" } });
+    expect(db.task.update).not.toHaveBeenCalled();
+    expect(db.activityLog.createMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a negative estimatedHours before ever touching the DB", async () => {
+    const result = await updateTask({ taskId: "task-1", estimatedHours: -1 });
+    expect(result.ok).toBe(false);
+    expect(db.task.findUnique).not.toHaveBeenCalled();
   });
 });
 

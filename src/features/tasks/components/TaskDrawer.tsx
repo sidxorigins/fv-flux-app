@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { CalendarDays, Check, ChevronDown, Tag, X } from "lucide-react"
+import { CalendarDays, Check, ChevronDown, Clock, Tag, X } from "lucide-react"
 
 import type {
   Label as ProjectLabel,
@@ -85,6 +85,8 @@ export type TaskDrawerProps = {
   onAssigneeChange?: (assigneeId: string | null) => void
   /** When provided, the due date becomes editable. `null` clears it. */
   onDueDateChange?: (date: string | null) => void
+  /** When provided, the estimated-hours figure becomes editable. `null` clears it. */
+  onEstimatedHoursChange?: (hours: number | null) => void
   /** When provided, labels become editable. */
   onLabelsChange?: (labelIds: string[]) => void
   /** When provided, the title becomes inline-editable. */
@@ -200,6 +202,102 @@ function chipTriggerClass() {
   )
 }
 
+function formatEstimatedHours(hours: number | null): string {
+  return hours === null ? "—" : `${hours}h est.`
+}
+
+/**
+ * Inline-editable estimated-hours figure — same click-to-edit / blur-or-Enter-commit /
+ * Escape-cancel pattern as `EditableTitle` above. `type="number"` with `min=0 step=0.5`;
+ * an empty input commits `null` (clears the estimate). Falls back to a static "—"/"Xh
+ * est." label for read-only viewers (when `onSave` is omitted).
+ */
+function EditableEstimatedHours({
+  hours,
+  onSave,
+}: {
+  hours: number | null
+  onSave?: (next: number | null) => void
+}) {
+  const [editing, setEditing] = React.useState(false)
+  const [draft, setDraft] = React.useState(hours === null ? "" : String(hours))
+
+  // Resync when the value changes underneath us (after our own save, or an
+  // external update) — render-phase adjustment, no effect-driven re-render.
+  const [syncedHours, setSyncedHours] = React.useState(hours)
+  if (syncedHours !== hours) {
+    setSyncedHours(hours)
+    setDraft(hours === null ? "" : String(hours))
+    setEditing(false)
+  }
+
+  function commit() {
+    const trimmed = draft.trim()
+    const next = trimmed === "" ? null : Number(trimmed)
+    if (next !== null && (Number.isNaN(next) || next < 0)) {
+      // Invalid input (e.g. a stray "-") — revert rather than submit garbage.
+      setDraft(hours === null ? "" : String(hours))
+      setEditing(false)
+      return
+    }
+    if (next !== hours) onSave?.(next)
+    setEditing(false)
+  }
+
+  if (!onSave) {
+    return (
+      <span className="flex items-center gap-1 text-sm tabular-nums text-muted-foreground">
+        <Clock className="size-3.5" aria-hidden />
+        {formatEstimatedHours(hours)}
+      </span>
+    )
+  }
+
+  if (editing) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <Input
+          type="number"
+          min={0}
+          step={0.5}
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              commit()
+            } else if (e.key === "Escape") {
+              e.preventDefault()
+              setDraft(hours === null ? "" : String(hours))
+              setEditing(false)
+            }
+          }}
+          aria-label="Estimated hours"
+          className="h-6 w-16 px-1.5 text-sm tabular-nums"
+        />
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className={cn(
+        chipTriggerClass(),
+        "text-sm tabular-nums text-muted-foreground"
+      )}
+      aria-label="Change estimated hours"
+    >
+      <Clock className="size-3.5" aria-hidden />
+      {formatEstimatedHours(hours)}
+    </button>
+  )
+}
+
 /**
  * Task detail drawer — shell only; description/comments/attachments/activity
  * arrive via slot props. Glass panel (the drawer is chrome per CLAUDE.md);
@@ -223,6 +321,7 @@ export function TaskDrawer({
   onTypeChange,
   onAssigneeChange,
   onDueDateChange,
+  onEstimatedHoursChange,
   onLabelsChange,
   onTitleChange,
 }: TaskDrawerProps) {
@@ -490,6 +589,11 @@ export function TaskDrawer({
                       {formatDueDate(dueDate)}
                     </span>
                   ) : null}
+
+                  <EditableEstimatedHours
+                    hours={task.estimatedHours}
+                    onSave={onEstimatedHoursChange}
+                  />
                 </div>
 
                 {onLabelsChange ? (
