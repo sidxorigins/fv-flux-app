@@ -17,6 +17,7 @@
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/db";
+import { recomputeMembership } from "@/lib/access-sync";
 import {
   AuthorizationError,
   requireAdmin,
@@ -565,9 +566,10 @@ export async function addProjectMember(input: unknown): Promise<ActionResult> {
     await prisma.$transaction(async (tx) => {
       await tx.projectMembership.upsert({
         where: { projectId_userId: { projectId, userId } },
-        update: { projectRole },
-        create: { projectId, userId, projectRole },
+        update: { manualRole: projectRole },
+        create: { projectId, userId, projectRole, manualRole: projectRole },
       });
+      await recomputeMembership(tx, projectId, userId);
       await tx.auditLog.create({
         data: {
           actorId: actor.id,
@@ -598,25 +600,28 @@ export async function updateProjectMember(input: unknown): Promise<ActionResult>
     const existing = await prisma.projectMembership.findUnique({
       where: { projectId_userId: { projectId, userId } },
     });
-    if (!existing) {
+    // A row whose manualRole is null is purely team/lead-derived — not a manual
+    // member, even though a ProjectMembership row exists for it.
+    if (!existing || existing.manualRole === null) {
       return { ok: false, error: "That user isn't a member of this project." };
     }
-    if (existing.projectRole === projectRole) {
+    if (existing.manualRole === projectRole) {
       return { ok: true }; // idempotent no-op
     }
 
     await prisma.$transaction(async (tx) => {
       await tx.projectMembership.update({
         where: { projectId_userId: { projectId, userId } },
-        data: { projectRole },
+        data: { manualRole: projectRole },
       });
+      await recomputeMembership(tx, projectId, userId);
       await tx.auditLog.create({
         data: {
           actorId: actor.id,
           action: "membership.role_changed",
           targetType: "ProjectMembership",
           targetId: userId,
-          metadata: { projectId, userId, from: existing.projectRole, to: projectRole },
+          metadata: { projectId, userId, from: existing.manualRole, to: projectRole },
         },
       });
     });
@@ -640,16 +645,21 @@ export async function removeProjectMember(input: unknown): Promise<ActionResult>
     const existing = await prisma.projectMembership.findUnique({
       where: { projectId_userId: { projectId, userId } },
     });
-    if (!existing) {
-      // Idempotent — nothing to remove.
+    // Idempotent — nothing to revoke when there's no row, or the row is
+    // already purely team/lead-derived (no manual grant to clear).
+    if (!existing || existing.manualRole === null) {
       revalidateMembership(projectId, userId);
       return { ok: true };
     }
 
     await prisma.$transaction(async (tx) => {
-      await tx.projectMembership.delete({
+      await tx.projectMembership.update({
         where: { projectId_userId: { projectId, userId } },
+        data: { manualRole: null },
       });
+      // Deletes the row iff nothing else justifies access (no team/lead
+      // source); otherwise downgrades it to the remaining derived role.
+      await recomputeMembership(tx, projectId, userId);
       await tx.auditLog.create({
         data: {
           actorId: actor.id,
