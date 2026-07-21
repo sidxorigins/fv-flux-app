@@ -8,7 +8,7 @@
 // so the client table/list components stay thin and never re-derive shapes.
 
 import { prisma } from "@/lib/db";
-import { requireAdmin, requireProjectRole } from "@/lib/permissions";
+import { requireAdmin, requireProjectRole, requireTeamManage } from "@/lib/permissions";
 import type { Prisma } from "@/generated/prisma/client";
 import type { GlobalRole, ProjectRole, UserStatus } from "@/generated/prisma/enums";
 import { buildTargetLabel, type AuditTargetLookups } from "./audit-target";
@@ -391,8 +391,14 @@ export interface AdminTeamDetail {
   projects: AdminTeamProject[];
 }
 
+/**
+ * A single team's detail. Authorised for a global Admin OR the team's own
+ * MANAGER (delegation clause, mirrors `getProjectMembers`) — the B4 UI's
+ * detail-page guard relies on this so a team manager can view/manage their
+ * own team without global Admin rights.
+ */
 export async function getTeam(teamId: string): Promise<AdminTeamDetail | null> {
-  await requireAdmin();
+  await requireTeamManage(teamId);
 
   const team = await prisma.team.findUnique({
     where: { id: teamId },

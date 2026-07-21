@@ -110,6 +110,20 @@ export function ProjectRoleBadge({ role }: { role: ProjectRole }) {
   return <Chip meta={PROJECT_ROLE_META[role]} />;
 }
 
+const TEAM_STATUS_META: Record<"active" | "inactive", ChipMeta> = {
+  active: { label: "Active", chipClass: "bg-success/10 text-success", dotClass: "bg-success" },
+  inactive: {
+    label: "Inactive",
+    chipClass: "bg-muted-foreground/10 text-muted-foreground",
+    dotClass: "bg-muted-foreground",
+  },
+};
+
+/** Active/inactive chip for a Team — boolean flag, not an enum, so no shared Record export. */
+export function TeamStatusBadge({ isActive }: { isActive: boolean }) {
+  return <Chip meta={TEAM_STATUS_META[isActive ? "active" : "inactive"]} />;
+}
+
 /** Deterministic two-letter initials for avatar fallbacks. */
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
