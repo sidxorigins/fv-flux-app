@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react"
+import { CornerLeftUp, Loader2, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { RichTextContent, RichTextEditor } from "@/components/editor"
@@ -256,6 +256,27 @@ export function TaskDetailPanel({
 
   const canDelete = canManage || task.reporterId === currentUserId
 
+  const parentLink = task.parent ? (
+    <button
+      type="button"
+      onClick={() => navigateToTask(task.parent!.id)}
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors duration-150 hover:bg-surface-raised motion-reduce:transition-none"
+    >
+      <CornerLeftUp
+        className="size-3.5 shrink-0 text-muted-foreground"
+        aria-hidden
+      />
+      <span className="shrink-0 text-xs text-muted-foreground">Parent</span>
+      <TypeIcon type={task.parent.type} className="size-3.5 shrink-0" />
+      <span className="shrink-0 font-mono text-xs text-muted-foreground">
+        {task.parent.key}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+        {task.parent.title}
+      </span>
+    </button>
+  ) : null
+
   const descriptionBlock = (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -405,6 +426,7 @@ export function TaskDetailPanel({
       open
       onOpenChange={onOpenChange}
       task={task}
+      parentLink={parentLink}
       description={descriptionBlock}
       comments={
         <CommentSection

@@ -60,6 +60,8 @@ export type TaskDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   task: BoardTask | null
+  /** Backlink to the parent task, shown in the header when this is a subtask. */
+  parentLink?: React.ReactNode
   /** Named content slots — wired up by the caller later. */
   description?: React.ReactNode
   attachments?: React.ReactNode
@@ -313,6 +315,7 @@ export function TaskDrawer({
   activity,
   watchers,
   time,
+  parentLink,
   headerAction,
   members,
   projectLabels,
@@ -355,6 +358,7 @@ export function TaskDrawer({
             <>
               {/* Header */}
               <div className="flex flex-col gap-2 border-b border-border/60 px-5 pt-5 pb-4">
+                {parentLink}
                 <div className="flex items-center gap-2">
                   {onTypeChange ? (
                     <DropdownMenu>
