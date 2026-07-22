@@ -1,7 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { CalendarDays, Check, ChevronDown, Clock, Tag, X } from "lucide-react"
+import Link from "next/link"
+import {
+  CalendarDays,
+  Check,
+  ChevronDown,
+  Clock,
+  SquareArrowOutUpRight,
+  Tag,
+  X,
+} from "lucide-react"
 
 import type {
   Label as ProjectLabel,
@@ -41,6 +50,7 @@ import { LabelChip } from "./LabelChip"
 import { PriorityBadge, PRIORITY_META, PRIORITY_ORDER } from "./PriorityBadge"
 import { StatusBadge, STATUS_META, STATUS_ORDER } from "./StatusBadge"
 import { formatDueDate } from "../format"
+import { taskPagePath } from "../share"
 import { TypeIcon, TYPE_META } from "./TypeIcon"
 
 type DrawerMember = Pick<User, "id" | "name" | "username" | "avatarKey">
@@ -394,6 +404,14 @@ export function TaskDrawer({
                     {task.key}
                   </span>
                   <div className="ml-auto flex items-center gap-2">
+                    <Link
+                      href={taskPagePath(task.key)}
+                      aria-label="Open full page"
+                      title="Open full page"
+                      className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground"
+                    >
+                      <SquareArrowOutUpRight className="size-4" aria-hidden />
+                    </Link>
                     {headerAction}
                     <SheetClose
                       render={
