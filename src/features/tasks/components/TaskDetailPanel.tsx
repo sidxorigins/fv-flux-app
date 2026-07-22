@@ -474,7 +474,7 @@ export function TaskDetailPanel({
       }
       headerAction={
         <div className="flex items-center gap-1">
-          <CopyTaskLink projectId={task.projectId} taskId={task.id} />
+          <CopyTaskLink taskKey={task.key} />
           <WatchToggle taskId={task.id} watching={isWatching} />
         </div>
       }

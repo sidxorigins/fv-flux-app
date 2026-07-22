@@ -136,8 +136,7 @@ export function TaskCard({
           </span>
         ) : null}
         <CopyTaskLink
-          projectId={task.projectId}
-          taskId={task.id}
+          taskKey={task.key}
           className={cn(
             "-my-1 -mr-1 size-6 opacity-0 transition-opacity",
             "group-hover/card:opacity-100 focus-visible:opacity-100",

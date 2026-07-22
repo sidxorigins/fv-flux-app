@@ -315,8 +315,7 @@ function TaskRowCard({
           <p className="truncate text-sm text-foreground">{task.title}</p>
         </div>
         <CopyTaskLink
-          projectId={task.projectId}
-          taskId={task.id}
+          taskKey={task.key}
           className="size-7 shrink-0"
         />
         <AssigneeAvatar user={task.assignee} />
@@ -601,8 +600,7 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
                       {task.title}
                     </span>
                     <CopyTaskLink
-                      projectId={task.projectId}
-                      taskId={task.id}
+                      taskKey={task.key}
                       className="ml-auto size-6 shrink-0 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
                     />
                   </span>
