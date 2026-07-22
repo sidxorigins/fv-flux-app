@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useParams, usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import type { TaskStatus } from "@/generated/prisma/client"
@@ -12,6 +12,10 @@ import { Board } from "./Board"
 
 export interface BoardViewProps {
   tasks: BoardTask[]
+  /** The project's cuid (not its key) — the route segment is now the project
+   * KEY, but `createTask` needs the real id, so the server component passes
+   * its already-resolved `projectId` down explicitly. */
+  projectId: string
   /** VIEWER read-only mode: dragging is off, cards stay clickable. */
   disabled?: boolean
 }
@@ -20,20 +24,15 @@ export interface BoardViewProps {
  * Client wrapper around the presentational `Board`: turns a drop into a
  * `moveTask` Server Action call (optimistic — the Board already applied the
  * move locally; a failure toasts and `router.refresh()`s to resync truth), a
- * card click into the URL-driven drawer (`?view=board&task=<id>`) per the
+ * card click into the URL-driven drawer (`?view=board&task=<key>`) per the
  * locked architecture decision (selected task lives in the URL), and a
  * per-column quick-add submit into a `createTask` call scoped to that
  * column's status (refreshing on success so the new card appears — quick-add
  * has no local optimistic copy the way drags do).
- *
- * `projectId` isn't passed as a prop (the page only renders board tasks); it
- * is read from the `/projects/[projectId]` route segment via `useParams`,
- * same value the server component resolved to fetch `tasks`.
  */
-export function BoardView({ tasks, disabled = false }: BoardViewProps) {
+export function BoardView({ tasks, projectId, disabled = false }: BoardViewProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const { projectId } = useParams<{ projectId: string }>()
   const [, startTransition] = React.useTransition()
 
   function handleTaskMove(event: TaskMoveEvent) {
@@ -46,8 +45,8 @@ export function BoardView({ tasks, disabled = false }: BoardViewProps) {
     })
   }
 
-  function handleTaskClick(taskId: string) {
-    router.replace(`${pathname}?view=board&task=${taskId}`, { scroll: false })
+  function handleTaskClick(taskKey: string) {
+    router.replace(`${pathname}?view=board&task=${taskKey}`, { scroll: false })
   }
 
   function handleQuickAdd(status: TaskStatus, title: string): Promise<boolean> {

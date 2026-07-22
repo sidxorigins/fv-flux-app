@@ -94,6 +94,19 @@ export async function getProject(projectId: string) {
 }
 
 /**
+ * Look up a project's cuid by its unique key (case-insensitive). Returns null if
+ * no such project. Does NOT check access — callers pass the id to `getProject`,
+ * which enforces `canViewProject`.
+ */
+export async function resolveProjectIdByKey(key: string): Promise<string | null> {
+  const row = await prisma.project.findUnique({
+    where: { key: key.toUpperCase() },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
+
+/**
  * Projects the signed-in user may CREATE tasks in (MEMBER+ or global Admin),
  * each with its members and labels — powers the multi-project "New task"
  * dialog on My Tasks. VIEWER-only memberships are excluded.

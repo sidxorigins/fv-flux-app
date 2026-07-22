@@ -4,6 +4,7 @@ import { FolderKanban } from "lucide-react"
 import { prisma } from "@/lib/db"
 import { Badge } from "@/components/ui/badge"
 import { getMyProjects } from "@/features/projects/queries"
+import { projectPath } from "@/features/tasks/share"
 import type { ProjectRole } from "@/generated/prisma/enums"
 
 import { CreateProjectDialog } from "./CreateProjectDialog"
@@ -57,7 +58,7 @@ export default async function ProjectsPage() {
           {projects.map((project) => (
             <Link
               key={project.id}
-              href={`/projects/${project.id}`}
+              href={projectPath(project.key)}
               className="group flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 outline-none transition-colors duration-150 hover:bg-surface-raised focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
             >
               <div className="flex items-center justify-between gap-2">

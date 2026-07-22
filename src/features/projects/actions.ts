@@ -72,11 +72,12 @@ function mapAuthError(err: unknown): { ok: false; error: string } | null {
   return null;
 }
 
-function revalidateProjectViews(projectId: string): void {
+function revalidateProjectViews(): void {
   revalidatePath("/dashboard");
   revalidatePath("/projects");
   // "layout" revalidates every nested route under the project (board, backlog, tasks).
-  revalidatePath(`/projects/${projectId}`, "layout");
+  // Revalidate the DYNAMIC ROUTE PATTERN so it matches every /projects/<key> page.
+  revalidatePath("/projects/[projectKey]", "layout");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,7 +158,7 @@ export async function createProject(
       return created;
     });
 
-    revalidateProjectViews(project.id);
+    revalidateProjectViews();
     return { ok: true, data: { id: project.id, key: project.key } };
   } catch (err) {
     const mapped = mapAuthError(err);
@@ -254,7 +255,7 @@ export async function updateProject(
       }
     });
 
-    revalidateProjectViews(projectId);
+    revalidateProjectViews();
     return { ok: true, data: { id: projectId } };
   } catch (err) {
     const mapped = mapAuthError(err);
@@ -317,7 +318,7 @@ export async function deleteProject(
       },
     });
 
-    revalidateProjectViews(projectId);
+    revalidateProjectViews();
     return { ok: true, data: { deletedR2: deleted.length, failedR2: failed.length } };
   } catch (err) {
     const mapped = mapAuthError(err);

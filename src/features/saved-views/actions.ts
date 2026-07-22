@@ -41,8 +41,9 @@ function mapAuthError(err: unknown): { ok: false; error: string } | null {
 }
 
 /** Saved views only surface in the project's backlog filter bar. */
-function revalidateProjectViews(projectId: string): void {
-  revalidatePath(`/projects/${projectId}`, "layout");
+function revalidateProjectViews(): void {
+  // Revalidate the DYNAMIC ROUTE PATTERN so it matches every /projects/<key> page.
+  revalidatePath("/projects/[projectKey]", "layout");
 }
 
 /**
@@ -70,7 +71,7 @@ export async function createSavedView(
       select: { id: true },
     });
 
-    revalidateProjectViews(projectId);
+    revalidateProjectViews();
     return { ok: true, data: { id: view.id } };
   } catch (err) {
     const mapped = mapAuthError(err);
@@ -98,7 +99,7 @@ export async function deleteSavedView(id: string): Promise<ActionResult<{ id: st
 
     await prisma.savedView.delete({ where: { id: view.id } });
 
-    revalidateProjectViews(view.projectId);
+    revalidateProjectViews();
     return { ok: true, data: { id: view.id } };
   } catch (err) {
     const mapped = mapAuthError(err);

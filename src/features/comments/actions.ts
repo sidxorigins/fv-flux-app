@@ -165,6 +165,7 @@ export async function addComment(
     });
 
     revalidate();
+    revalidatePath("/browse/[taskKey]", "page");
     return { ok: true, data: { id: comment.id } };
   } catch (err) {
     return toError(err);
@@ -379,6 +380,7 @@ export async function deleteComment(input: unknown): Promise<ActionResult> {
     }
 
     revalidate();
+    revalidatePath("/browse/[taskKey]", "page");
     return { ok: true };
   } catch (err) {
     return toError(err);

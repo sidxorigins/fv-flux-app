@@ -9,8 +9,7 @@ import { cn } from "@/lib/utils";
 import { taskShareUrl } from "../share";
 
 interface CopyTaskLinkProps {
-  projectId: string;
-  taskId: string;
+  taskKey: string;
   /** Accessible label / tooltip. */
   label?: string;
   className?: string;
@@ -25,8 +24,7 @@ interface CopyTaskLinkProps {
  * a parent card/row open handler or dnd listeners.
  */
 export function CopyTaskLink({
-  projectId,
-  taskId,
+  taskKey,
   label = "Copy task link",
   className,
 }: CopyTaskLinkProps) {
@@ -44,7 +42,7 @@ export function CopyTaskLink({
     event.preventDefault();
     try {
       await navigator.clipboard.writeText(
-        taskShareUrl(window.location.origin, projectId, taskId),
+        taskShareUrl(window.location.origin, taskKey),
       );
       setCopied(true);
       toast.success("Link copied");

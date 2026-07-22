@@ -46,9 +46,10 @@ function mapAuthError(err: unknown): { ok: false; error: string } | null {
   return null;
 }
 
-function revalidateProjectViews(projectId: string): void {
+function revalidateProjectViews(): void {
   revalidatePath("/dashboard");
-  revalidatePath(`/projects/${projectId}`, "layout");
+  // Revalidate the DYNAMIC ROUTE PATTERN so it matches every /projects/<key> page.
+  revalidatePath("/projects/[projectKey]", "layout");
 }
 
 /** Create a label in a project (MEMBER+). Duplicate names (per project) fail friendly. */
@@ -67,7 +68,7 @@ export async function createLabel(
       data: { projectId, name, color },
       select: { id: true },
     });
-    revalidateProjectViews(projectId);
+    revalidateProjectViews();
     return { ok: true, data: { id: label.id } };
   } catch (err) {
     const mapped = mapAuthError(err);
@@ -105,7 +106,7 @@ export async function updateLabel(
         ...(color !== undefined ? { color } : {}),
       },
     });
-    revalidateProjectViews(label.projectId);
+    revalidateProjectViews();
     return { ok: true, data: { id: labelId } };
   } catch (err) {
     const mapped = mapAuthError(err);
@@ -135,7 +136,7 @@ export async function deleteLabel(
     await requireProjectRole(label.projectId, "MANAGER");
 
     await prisma.label.delete({ where: { id: labelId } });
-    revalidateProjectViews(label.projectId);
+    revalidateProjectViews();
     return { ok: true, data: { id: labelId } };
   } catch (err) {
     const mapped = mapAuthError(err);

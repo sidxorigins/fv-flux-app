@@ -17,6 +17,7 @@ export interface NotificationItem {
   type: NotificationType;
   taskId: string | null;
   projectId: string | null;
+  projectKey: string | null;
   taskKey: string | null;
   taskTitle: string | null;
   actorName: string | null;
@@ -42,7 +43,14 @@ export async function getMyNotifications(limit = 20): Promise<NotificationItem[]
       readAt: true,
       createdAt: true,
       actor: { select: USER_BASIC },
-      task: { select: { key: true, title: true, projectId: true } },
+      task: {
+        select: {
+          key: true,
+          title: true,
+          projectId: true,
+          project: { select: { key: true } },
+        },
+      },
     },
   });
 
@@ -51,6 +59,7 @@ export async function getMyNotifications(limit = 20): Promise<NotificationItem[]
     type: n.type,
     taskId: n.taskId,
     projectId: n.task?.projectId ?? null,
+    projectKey: n.task?.project.key ?? null,
     taskKey: n.task?.key ?? null,
     taskTitle: n.task?.title ?? null,
     actorName: n.actor?.name ?? null,
@@ -95,7 +104,14 @@ export async function getNotificationsPage(params?: {
       readAt: true,
       createdAt: true,
       actor: { select: USER_BASIC },
-      task: { select: { key: true, title: true, projectId: true } },
+      task: {
+        select: {
+          key: true,
+          title: true,
+          projectId: true,
+          project: { select: { key: true } },
+        },
+      },
     },
   })
 
@@ -108,6 +124,7 @@ export async function getNotificationsPage(params?: {
       type: n.type,
       taskId: n.taskId,
       projectId: n.task?.projectId ?? null,
+      projectKey: n.task?.project.key ?? null,
       taskKey: n.task?.key ?? null,
       taskTitle: n.task?.title ?? null,
       actorName: n.actor?.name ?? null,

@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { GroupedWork } from "../work-buckets";
+import type { MyWorkTask } from "../queries";
 import { MyWorkList } from "./MyWorkList";
 
 /**
@@ -8,7 +9,7 @@ import { MyWorkList } from "./MyWorkList";
  * (which owns the inline status dropdown). Server component — no state of its
  * own; the interactive rows live inside MyWorkList.
  */
-export function GroupedWorkList({ work }: { work: GroupedWork }) {
+export function GroupedWorkList({ work }: { work: GroupedWork<MyWorkTask> }) {
   if (work.total === 0) {
     return (
       <p className="text-muted-foreground py-8 text-center text-sm">
@@ -18,10 +19,10 @@ export function GroupedWorkList({ work }: { work: GroupedWork }) {
   }
 
   const groups: {
-    key: keyof GroupedWork;
+    key: keyof GroupedWork<MyWorkTask>;
     label: string;
     tint: string;
-    tasks: GroupedWork[keyof GroupedWork];
+    tasks: GroupedWork<MyWorkTask>[keyof GroupedWork<MyWorkTask>];
   }[] = [
     { key: "overdue", label: "Overdue", tint: "text-danger", tasks: work.overdue },
     { key: "today", label: "Today", tint: "text-warning", tasks: work.today },

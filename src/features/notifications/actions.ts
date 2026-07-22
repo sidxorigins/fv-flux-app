@@ -116,7 +116,8 @@ export async function toggleWatchTask(
     } else {
       await prisma.taskWatcher.create({ data: { taskId, userId: user.id } });
     }
-    revalidatePath(`/projects/${task.projectId}`, "layout");
+    revalidatePath("/projects/[projectKey]", "layout");
+    revalidatePath("/browse/[taskKey]", "page");
     return { ok: true, data: { watching: !existing } };
   } catch (err) {
     return mapAuthError(err) ?? fail("Something went wrong.");
@@ -165,7 +166,8 @@ export async function addTaskWatcher(
 
     // Already watching → don't write a duplicate activity row or re-notify.
     if (already) {
-      revalidatePath(`/projects/${task.projectId}`, "layout");
+      revalidatePath("/projects/[projectKey]", "layout");
+      revalidatePath("/browse/[taskKey]", "page");
       return { ok: true, data: { added: false } };
     }
 
@@ -188,7 +190,8 @@ export async function addTaskWatcher(
       type: "TASK_WATCHER_ADDED",
       taskId,
     });
-    revalidatePath(`/projects/${task.projectId}`, "layout");
+    revalidatePath("/projects/[projectKey]", "layout");
+    revalidatePath("/browse/[taskKey]", "page");
     return { ok: true, data: { added: true } };
   } catch (err) {
     return mapAuthError(err) ?? fail("Something went wrong.");
@@ -242,7 +245,8 @@ export async function removeTaskWatcher(
         console.error("[watcher activity] failed", err);
       }
     }
-    revalidatePath(`/projects/${task.projectId}`, "layout");
+    revalidatePath("/projects/[projectKey]", "layout");
+    revalidatePath("/browse/[taskKey]", "page");
     return { ok: true, data: { removed: Boolean(existing) } };
   } catch (err) {
     return mapAuthError(err) ?? fail("Something went wrong.");

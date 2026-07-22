@@ -48,10 +48,14 @@ function mapAuthError(err: unknown): { ok: false; error: string } | null {
   return null;
 }
 
-function revalidateProjectViews(projectId: string): void {
+function revalidateProjectViews(): void {
   revalidatePath("/dashboard");
   // "layout" revalidates every nested route under the project (board, backlog, tasks).
-  revalidatePath(`/projects/${projectId}`, "layout");
+  // Revalidate the DYNAMIC ROUTE PATTERN so it matches every /projects/<key> page.
+  revalidatePath("/projects/[projectKey]", "layout");
+  // Both callers here mutate task detail (status/deletion), so also bust the
+  // full-page task view for every /browse/<key> page.
+  revalidatePath("/browse/[taskKey]", "page");
 }
 
 const bulkTaskIdsSchema = z.object({
@@ -153,7 +157,7 @@ export async function bulkUpdateTaskStatus(
       });
     });
 
-    revalidateProjectViews(projectId);
+    revalidateProjectViews();
     return { ok: true, data: { count: toChange.length } };
   } catch (err) {
     const mapped = mapAuthError(err);
@@ -236,7 +240,7 @@ export async function bulkDeleteTasks(
       })),
     });
 
-    revalidateProjectViews(projectId);
+    revalidateProjectViews();
     return {
       ok: true,
       data: {

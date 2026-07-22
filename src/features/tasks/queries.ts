@@ -288,6 +288,19 @@ export async function getTask(taskId: string): Promise<TaskDetail | null> {
   };
 }
 
+/**
+ * Look up a task's cuid by its unique key (case-insensitive, e.g. "EISC-9").
+ * Returns null if no such task. Does NOT check access — callers pass the id to
+ * `getTask`, which enforces `canViewProject`.
+ */
+export async function resolveTaskIdByKey(key: string): Promise<string | null> {
+  const row = await prisma.task.findUnique({
+    where: { key: key.toUpperCase() },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // My work
 // ─────────────────────────────────────────────────────────────────────────────
@@ -348,6 +361,7 @@ export interface SearchResults {
     type: TaskType;
     status: TaskStatus;
     projectId: string;
+    projectKey: string;
   }[];
   projects: { id: string; key: string; name: string }[];
 }
@@ -387,6 +401,7 @@ export async function searchEverything(rawQuery: string): Promise<SearchResults>
         type: true,
         status: true,
         projectId: true,
+        project: { select: { key: true } },
       },
       orderBy: { updatedAt: "desc" },
       take: 8,
@@ -405,5 +420,11 @@ export async function searchEverything(rawQuery: string): Promise<SearchResults>
     }),
   ]);
 
-  return { tasks, projects };
+  return {
+    tasks: tasks.map(({ project, ...task }) => ({
+      ...task,
+      projectKey: project.key,
+    })),
+    projects,
+  };
 }

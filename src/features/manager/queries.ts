@@ -304,7 +304,7 @@ export interface ManagerActiveTask {
   id: string;
   key: string;
   title: string;
-  /** Needed to build the deep link into the project board (`/projects/<id>?task=<id>`). */
+  /** Needed to build the deep link into the project board via `taskDrawerPath`. */
   projectId: string;
   projectKey: string;
   status: TaskStatus;
@@ -482,13 +482,28 @@ export async function getManagerTeamActivity(
       newValue: true,
       createdAt: true,
       actor: { select: { id: true, name: true, avatarKey: true } },
-      task: { select: { id: true, key: true, title: true, projectId: true } },
+      task: {
+        select: {
+          id: true,
+          key: true,
+          title: true,
+          projectId: true,
+          project: { select: { key: true } },
+        },
+      },
     },
   });
 
   return Promise.all(
-    rows.map(async ({ actor, ...row }) => ({
+    rows.map(async ({ actor, task, ...row }) => ({
       ...row,
+      task: {
+        id: task.id,
+        key: task.key,
+        title: task.title,
+        projectId: task.projectId,
+        projectKey: task.project.key,
+      },
       actor: {
         id: actor.id,
         name: actor.name,

@@ -37,6 +37,7 @@ import {
 // Board/TaskCard/TaskDrawer use internally for the same overdue-tint need.
 import { useClientNow } from "@/features/tasks/components/hooks"
 import type { BoardTask } from "@/features/tasks/types"
+import { taskDrawerPath } from "@/features/tasks/share"
 
 export interface MyTasksGroup {
   project: { id: string; key: string; name: string }
@@ -125,8 +126,9 @@ function MyTaskCard({
 /**
  * Grouped "my work" table — project key headers, backlog-style rows, inline
  * status quick-change. Row click navigates to the task's OWN project board
- * (`/projects/<projectId>?task=<taskId>`), a real page transition rather than
- * a same-page URL param update — this page isn't itself project-scoped.
+ * (`taskDrawerPath` — `/projects/<projectKey>?task=<taskKey>`), a real page
+ * transition rather than a same-page URL param update — this page isn't
+ * itself project-scoped.
  */
 export function MyTasksTable({ groups }: { groups: MyTasksGroup[] }) {
   const router = useRouter()
@@ -186,12 +188,12 @@ export function MyTasksTable({ groups }: { groups: MyTasksGroup[] }) {
                       key={task.id}
                       tabIndex={0}
                       onClick={() =>
-                        router.push(`/projects/${project.id}?task=${task.id}`)
+                        router.push(taskDrawerPath(project.key, task.key))
                       }
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           router.push(
-                            `/projects/${project.id}?task=${task.id}`,
+                            taskDrawerPath(project.key, task.key),
                           )
                         }
                       }}
@@ -305,7 +307,7 @@ export function MyTasksTable({ groups }: { groups: MyTasksGroup[] }) {
                 task={task}
                 now={now}
                 onOpen={() =>
-                  router.push(`/projects/${project.id}?task=${task.id}`)
+                  router.push(taskDrawerPath(project.key, task.key))
                 }
               />
             ))}

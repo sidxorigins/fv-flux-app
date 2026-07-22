@@ -4,6 +4,7 @@
 // unconfigured (common in local dev).
 
 import nodemailer, { type Transporter } from "nodemailer";
+import { taskPagePath } from "@/features/tasks/share";
 
 let cachedTransport: Transporter | null = null;
 
@@ -370,9 +371,7 @@ function renderDueReminderRows(
       const key = escapeHtml(task.key);
       const title = escapeHtml(task.title);
       const due = escapeHtml(formatDueDate(task.dueDate));
-      const href = escapeHtml(
-        `${appUrl}/projects/${task.projectId}?task=${task.id}`,
-      );
+      const href = escapeHtml(`${appUrl}${taskPagePath(task.key)}`);
       return `<tr>
                     <td style="padding:0;border-bottom:1px solid #2a2a2a;">
                       <a href="${href}" style="display:block;padding:10px 16px;text-decoration:none;">

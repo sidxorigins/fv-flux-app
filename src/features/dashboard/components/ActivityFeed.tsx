@@ -4,6 +4,7 @@ import type { TaskStatus } from "@/generated/prisma/enums";
 // Deep import (server-safe module, no client barrel) for the status labels.
 import { STATUS_META } from "@/features/tasks/components/StatusBadge";
 import type { DashboardActivity } from "@/features/dashboard/queries";
+import { taskDrawerPath } from "@/features/tasks/share";
 import { cn } from "@/lib/utils";
 
 // ─── Sentence building ───────────────────────────────────────────────────────
@@ -138,7 +139,7 @@ export function ActivityFeed({ items }: { items: DashboardActivity[] }) {
               </span>{" "}
               {verb}{" "}
               <Link
-                href={`/projects/${item.task.projectId}?task=${item.task.id}`}
+                href={taskDrawerPath(item.task.projectKey, item.task.key)}
                 title={item.task.title}
                 className={cn(
                   "text-foreground hover:text-primary font-mono text-xs underline-offset-2 hover:underline",

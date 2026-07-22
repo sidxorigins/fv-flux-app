@@ -5,12 +5,12 @@ import type { BoardTask } from "@/features/tasks/types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export interface GroupedWork {
-  overdue: BoardTask[];
-  today: BoardTask[];
-  thisWeek: BoardTask[];
-  later: BoardTask[];
-  noDate: BoardTask[];
+export interface GroupedWork<T extends BoardTask = BoardTask> {
+  overdue: T[];
+  today: T[];
+  thisWeek: T[];
+  later: T[];
+  noDate: T[];
   total: number;
 }
 
@@ -21,18 +21,21 @@ export interface GroupedWork {
  *   thisWeek — due within the next 7 days (after today)
  *   later    — due 8+ days out
  *   noDate   — no due date
- * Input order is preserved within each bucket.
+ * Input order is preserved within each bucket. Generic over `T` (rather than
+ * fixed to `BoardTask`) so callers can bucket a `BoardTask` subtype carrying
+ * extra fields (e.g. the dashboard's `projectKey` for deep links) without a
+ * cast.
  */
-export function bucketWorkByDue(
-  tasks: BoardTask[],
+export function bucketWorkByDue<T extends BoardTask = BoardTask>(
+  tasks: T[],
   now: Date = new Date(),
-): GroupedWork {
+): GroupedWork<T> {
   const startToday = new Date(now);
   startToday.setHours(0, 0, 0, 0);
   const startTomorrow = new Date(startToday.getTime() + DAY_MS);
   const startInAWeek = new Date(startToday.getTime() + 7 * DAY_MS);
 
-  const g: GroupedWork = {
+  const g: GroupedWork<T> = {
     overdue: [],
     today: [],
     thisWeek: [],

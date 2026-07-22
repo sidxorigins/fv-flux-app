@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { NotificationItem } from "@/features/notifications/queries";
 import { markNotificationRead } from "@/features/notifications/actions";
 import { NotificationRow } from "@/features/notifications/components/NotificationRow";
+import { taskDrawerPath } from "@/features/tasks/share";
 
 /**
  * Dashboard inbox glance: the top few notifications (unread first). Clicking one
@@ -36,8 +37,8 @@ export function InboxPanel({
     }
     startTransition(async () => {
       if (!n.readAt) await markNotificationRead(n.id);
-      if (n.projectId && n.taskId) {
-        router.push(`/projects/${n.projectId}?task=${n.taskId}`);
+      if (n.projectKey && n.taskKey) {
+        router.push(taskDrawerPath(n.projectKey, n.taskKey));
       }
       router.refresh();
     });
