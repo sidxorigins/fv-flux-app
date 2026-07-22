@@ -20,7 +20,7 @@ import {
 import type { SearchResults } from "@/features/tasks/queries"
 import { StatusBadge } from "@/features/tasks/components/StatusBadge"
 import { TypeIcon } from "@/features/tasks/components/TypeIcon"
-import { taskDrawerPath } from "@/features/tasks/share"
+import { projectPath, taskDrawerPath } from "@/features/tasks/share"
 
 const EMPTY: SearchResults = { tasks: [], projects: [] }
 
@@ -117,7 +117,7 @@ export function CommandPalette() {
                 <CommandItem
                   key={project.id}
                   value={`project-${project.id}`}
-                  onSelect={() => go(`/projects/${project.id}`)}
+                  onSelect={() => go(projectPath(project.key))}
                 >
                   <FolderKanban aria-hidden />
                   <span className="font-mono text-xs text-muted-foreground">
