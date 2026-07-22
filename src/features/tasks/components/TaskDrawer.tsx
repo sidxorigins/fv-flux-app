@@ -40,7 +40,7 @@ import { useClientNow } from "./hooks"
 import { LabelChip } from "./LabelChip"
 import { PriorityBadge, PRIORITY_META, PRIORITY_ORDER } from "./PriorityBadge"
 import { StatusBadge, STATUS_META, STATUS_ORDER } from "./StatusBadge"
-import { formatDueDate } from "./TaskCard"
+import { formatDueDate } from "../format"
 import { TypeIcon, TYPE_META } from "./TypeIcon"
 
 type DrawerMember = Pick<User, "id" | "name" | "username" | "avatarKey">

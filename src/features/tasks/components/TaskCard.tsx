@@ -11,6 +11,7 @@ import {
 
 import { cn } from "@/lib/utils"
 
+import { formatDueDate } from "../format"
 import type { BoardTask } from "../types"
 import { AssigneeAvatar } from "./AssigneeAvatar"
 import { CopyTaskLink } from "./CopyTaskLink"
@@ -18,27 +19,10 @@ import { LabelChip } from "./LabelChip"
 import { PriorityBadge } from "./PriorityBadge"
 import { TypeIcon } from "./TypeIcon"
 
+// formatDueDate lives in a server-safe module (../format) so Server Components
+// (e.g. /explore results) can call it — a fn exported from this "use client"
+// file cannot. TaskCard imports it above for its own rendering use.
 const MAX_VISIBLE_LABELS = 2
-
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const
-
-/** Deterministic (locale-independent) date label — safe for SSR hydration. */
-export function formatDueDate(date: Date): string {
-  return `${MONTHS[date.getMonth()]} ${date.getDate()}`
-}
 
 function MetaCount({
   icon: Icon,

@@ -54,7 +54,7 @@ import { useClientNow } from "./hooks"
 import { LabelChip } from "./LabelChip"
 import { PRIORITY_META, PRIORITY_ORDER, PriorityBadge } from "./PriorityBadge"
 import { STATUS_META, STATUS_ORDER, StatusBadge } from "./StatusBadge"
-import { formatDueDate } from "./TaskCard"
+import { formatDueDate } from "../format"
 import { TypeIcon } from "./TypeIcon"
 
 /**

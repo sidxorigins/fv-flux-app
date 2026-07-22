@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils"
 import type { ActivityEntry } from "../activity"
 import { PRIORITY_META } from "./PriorityBadge"
 import { STATUS_META } from "./StatusBadge"
-import { formatDueDate } from "./TaskCard"
+import { formatDueDate } from "../format"
 import { TYPE_META } from "./TypeIcon"
 
 // Server-compatible (no "use client") — this renders once per drawer open /

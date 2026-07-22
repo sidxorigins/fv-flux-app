@@ -1,5 +1,6 @@
 export { Board, type BoardProps } from "./Board"
-export { TaskCard, type TaskCardProps, formatDueDate } from "./TaskCard"
+export { TaskCard, type TaskCardProps } from "./TaskCard"
+export { formatDueDate } from "../format"
 export { TaskDrawer, type TaskDrawerProps } from "./TaskDrawer"
 export { StatusBadge, STATUS_META, STATUS_ORDER } from "./StatusBadge"
 export {

@@ -17,7 +17,7 @@ import {
 } from "@/features/tasks/components/StatusBadge";
 import { PriorityBadge } from "@/features/tasks/components/PriorityBadge";
 import { TypeIcon } from "@/features/tasks/components/TypeIcon";
-import { formatDueDate } from "@/features/tasks/components/TaskCard";
+import { formatDueDate } from "@/features/tasks/format";
 import { useClientNow } from "@/features/tasks/components/hooks";
 import {
   DropdownMenu,
