@@ -26,6 +26,7 @@ export const createTaskSchema = z.object({
   // project (one level of nesting only in v1).
   parentId: id.nullable().optional(),
   dueDate: z.coerce.date().nullable().optional(),
+  estimatedHours: z.number().min(0).max(10000).nullable().optional(),
   labelIds: z.array(id).optional(),
 });
 

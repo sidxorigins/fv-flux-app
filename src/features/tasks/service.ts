@@ -20,6 +20,7 @@ export interface CreateTaskCoreInput {
   description?: string | null;
   parentId?: string | null;
   dueDate?: Date | null;
+  estimatedHours?: number | null;
   labelIds?: string[];
 }
 
@@ -61,6 +62,7 @@ export async function createTaskCore(
       parentId: input.parentId ?? null,
       position,
       dueDate: input.dueDate ?? null,
+      estimatedHours: input.estimatedHours ?? null,
       ...(input.labelIds?.length
         ? { labels: { connect: input.labelIds.map((id) => ({ id })) } }
         : {}),

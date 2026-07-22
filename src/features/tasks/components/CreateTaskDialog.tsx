@@ -62,6 +62,13 @@ const UNASSIGNED = "UNASSIGNED"
 const formSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
   dueDate: z.string(),
+  // Optional estimate in hours (decimal). Empty string = no estimate.
+  estimatedHours: z
+    .string()
+    .refine(
+      (v) => v === "" || (Number(v) >= 0 && Number(v) <= 10000),
+      "Enter hours between 0 and 10000",
+    ),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -135,7 +142,7 @@ export function CreateTaskDialog(props: CreateTaskDialogProps) {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: { title: "", dueDate: "" },
+    defaultValues: { title: "", dueDate: "", estimatedHours: "" },
   })
 
   function onOpenChange(next: boolean) {
@@ -175,6 +182,7 @@ export function CreateTaskDialog(props: CreateTaskDialogProps) {
         priority,
         assigneeId: assigneeId === UNASSIGNED ? null : assigneeId,
         dueDate: values.dueDate ? new Date(values.dueDate) : null,
+        estimatedHours: values.estimatedHours ? Number(values.estimatedHours) : null,
         labelIds,
       })
       if (res.ok) {
@@ -326,6 +334,25 @@ export function CreateTaskDialog(props: CreateTaskDialogProps) {
                     disabled={isPending}
                     {...register("dueDate")}
                   />
+                </FieldContent>
+              </Field>
+
+              <Field data-invalid={!!errors.estimatedHours || undefined}>
+                <FieldLabel htmlFor="ct-estimate">Est. hours</FieldLabel>
+                <FieldContent>
+                  <Input
+                    id="ct-estimate"
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    placeholder="e.g. 2.5"
+                    disabled={isPending}
+                    aria-invalid={!!errors.estimatedHours || undefined}
+                    {...register("estimatedHours")}
+                  />
+                  {errors.estimatedHours ? (
+                    <FieldError>{errors.estimatedHours.message}</FieldError>
+                  ) : null}
                 </FieldContent>
               </Field>
             </div>

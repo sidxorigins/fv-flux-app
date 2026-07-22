@@ -189,6 +189,7 @@ export async function createTask(
     assigneeId,
     parentId,
     dueDate,
+    estimatedHours,
     labelIds,
   } = parsed.data;
 
@@ -222,6 +223,7 @@ export async function createTask(
         description,
         parentId,
         dueDate,
+        estimatedHours,
         labelIds,
       });
     });
