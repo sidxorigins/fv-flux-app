@@ -24,7 +24,7 @@ export interface BoardViewProps {
  * Client wrapper around the presentational `Board`: turns a drop into a
  * `moveTask` Server Action call (optimistic — the Board already applied the
  * move locally; a failure toasts and `router.refresh()`s to resync truth), a
- * card click into the URL-driven drawer (`?view=board&task=<id>`) per the
+ * card click into the URL-driven drawer (`?view=board&task=<key>`) per the
  * locked architecture decision (selected task lives in the URL), and a
  * per-column quick-add submit into a `createTask` call scoped to that
  * column's status (refreshing on success so the new card appears — quick-add
@@ -45,8 +45,8 @@ export function BoardView({ tasks, projectId, disabled = false }: BoardViewProps
     })
   }
 
-  function handleTaskClick(taskId: string) {
-    router.replace(`${pathname}?view=board&task=${taskId}`, { scroll: false })
+  function handleTaskClick(taskKey: string) {
+    router.replace(`${pathname}?view=board&task=${taskKey}`, { scroll: false })
   }
 
   function handleQuickAdd(status: TaskStatus, title: string): Promise<boolean> {

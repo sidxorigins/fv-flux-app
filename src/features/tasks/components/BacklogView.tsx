@@ -425,9 +425,9 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }
 
-  function openTask(taskId: string) {
+  function openTask(taskKey: string) {
     const params = new URLSearchParams(searchParams.toString())
-    params.set("task", taskId)
+    params.set("task", taskKey)
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
@@ -575,9 +575,9 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
               <TableRow
                 key={task.id}
                 tabIndex={0}
-                onClick={() => openTask(task.id)}
+                onClick={() => openTask(task.key)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") openTask(task.id)
+                  if (event.key === "Enter") openTask(task.key)
                 }}
                 className="group/row cursor-pointer outline-none focus-visible:bg-muted/50"
               >
@@ -749,7 +749,7 @@ export function BacklogView({ tasks, canEdit }: BacklogViewProps) {
             canEdit={canEdit}
             selected={selected.has(task.id)}
             onToggleSelect={() => toggleOne(task.id)}
-            onOpen={() => openTask(task.id)}
+            onOpen={() => openTask(task.key)}
           />
         ))}
       </div>

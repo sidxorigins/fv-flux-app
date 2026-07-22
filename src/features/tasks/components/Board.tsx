@@ -54,7 +54,7 @@ function buildColumns(tasks: BoardTask[]): ColumnMap {
 export type BoardProps = {
   tasks: BoardTask[]
   onTaskMove: (event: TaskMoveEvent) => void
-  onTaskClick: (taskId: string) => void
+  onTaskClick: (taskKey: string) => void
   /**
    * Inline "+ Add a task…" quick-add at the foot of a column. Resolves `true`
    * on success (the caller clears the input) or `false` on failure (the
@@ -346,7 +346,7 @@ function BoardColumn({
   status: TaskStatus
   tasks: BoardTask[]
   disabled: boolean
-  onTaskClick: (taskId: string) => void
+  onTaskClick: (taskKey: string) => void
   onQuickAdd?: (status: TaskStatus, title: string) => Promise<boolean>
   now: Date | null
   reducedMotion: boolean
@@ -482,7 +482,7 @@ function SortableTaskCard({
 }: {
   task: BoardTask
   disabled: boolean
-  onTaskClick: (taskId: string) => void
+  onTaskClick: (taskKey: string) => void
   now: Date | null
   reducedMotion: boolean
 }) {
@@ -501,7 +501,7 @@ function SortableTaskCard({
       task={task}
       now={now}
       dragging={isDragging}
-      onOpen={() => onTaskClick(task.id)}
+      onOpen={() => onTaskClick(task.key)}
       style={{
         // dnd-kit owns the drag physics — transform/transition only.
         transform: CSS.Transform.toString(transform),

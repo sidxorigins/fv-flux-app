@@ -19,7 +19,7 @@ import {
   listAssignableUsersForProject,
 } from "@/features/admin/queries"
 import { getTaskActivity } from "@/features/tasks/activity"
-import { isCuid, projectPath } from "@/features/tasks/share"
+import { isCuid, projectPath, taskDrawerPath } from "@/features/tasks/share"
 import { getTaskWatchers, isWatchingTask } from "@/features/notifications/queries"
 import type { TaskWatcherItem } from "@/features/notifications/queries"
 import { getTaskTime, getRunningTimer, getProjectTimeReport } from "@/features/time/queries"
@@ -42,6 +42,7 @@ import {
   getBoardTasks,
   getProjectLabels,
   getTask,
+  resolveTaskIdByKey,
 } from "@/features/tasks/queries"
 import { getSavedViews } from "@/features/saved-views/queries"
 
@@ -157,7 +158,34 @@ export default async function ProjectPage({
 
   const view: "board" | "backlog" | "time" =
     sp.view === "backlog" ? "backlog" : sp.view === "time" ? "time" : "board"
-  const taskId = asString(sp.task) ?? null
+
+  // `?task=` is a task KEY (e.g. "EISC-9"), not a cuid — mirrors the project
+  // segment handling above. A legacy cuid redirects to the key form,
+  // preserving every other param; an unknown cuid or unknown key just means
+  // no drawer opens (never a hard 404 — the drawer is a peer overlay, see
+  // the drawer-fetch try/catch below).
+  const taskParam = asString(sp.task) ?? null
+  let taskId: string | null = null
+  if (taskParam) {
+    if (isCuid(taskParam)) {
+      const row = await prisma.task.findUnique({
+        where: { id: taskParam },
+        select: { key: true },
+      })
+      if (row) {
+        const qs = new URLSearchParams()
+        for (const [k, v] of Object.entries(sp)) {
+          if (k === "task") continue
+          if (Array.isArray(v)) v.forEach((x) => qs.append(k, x))
+          else if (v) qs.set(k, v)
+        }
+        redirect(taskDrawerPath(project.key, row.key, qs))
+      }
+      // unknown cuid → just don't open a drawer
+    } else {
+      taskId = await resolveTaskIdByKey(taskParam)
+    }
+  }
 
   const labels = await getProjectLabels(projectId)
 

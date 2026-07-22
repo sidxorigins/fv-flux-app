@@ -110,9 +110,9 @@ export function TaskDetailPanel({
 
   const [deleting, setDeleting] = React.useState(false)
 
-  function navigateToTask(taskId: string) {
+  function navigateToTask(taskKey: string) {
     const params = new URLSearchParams(searchParams.toString())
-    params.set("task", taskId)
+    params.set("task", taskKey)
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
@@ -259,7 +259,7 @@ export function TaskDetailPanel({
   const parentLink = task.parent ? (
     <button
       type="button"
-      onClick={() => navigateToTask(task.parent!.id)}
+      onClick={() => navigateToTask(task.parent!.key)}
       className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors duration-150 hover:bg-surface-raised motion-reduce:transition-none"
     >
       <CornerLeftUp
@@ -336,7 +336,7 @@ export function TaskDetailPanel({
               <li key={subtask.id}>
                 <button
                   type="button"
-                  onClick={() => navigateToTask(subtask.id)}
+                  onClick={() => navigateToTask(subtask.key)}
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-150 hover:bg-surface-raised motion-reduce:transition-none"
                 >
                   <TypeIcon type={subtask.type} className="size-3.5 shrink-0" />
