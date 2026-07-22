@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db";
 import { sendTaskAssignedEmail } from "@/lib/mail";
 import { deleteObjects } from "@/lib/r2";
 import { sanitizeRichText } from "@/lib/sanitize";
+import { taskPagePath } from "./share";
 import {
   AuthorizationError,
   requireProjectRole,
@@ -154,7 +155,7 @@ async function notifyAssignee(params: {
     taskTitle: task.title,
     projectName: task.project.name,
     assignedByName: params.actorName,
-    taskUrl: `${base}/projects/${task.projectId}?task=${params.taskId}`,
+    taskUrl: `${base}${taskPagePath(task.key)}`,
   });
 }
 

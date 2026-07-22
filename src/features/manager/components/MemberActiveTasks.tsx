@@ -6,6 +6,7 @@ import { ChevronRight } from "lucide-react";
 
 import type { MemberActiveTasks as MemberTasks } from "@/features/manager/queries";
 import { formatDueDate, PriorityBadge, StatusBadge } from "@/features/tasks/components";
+import { taskDrawerPath } from "@/features/tasks/share";
 import { cn } from "@/lib/utils";
 
 /**
@@ -13,8 +14,9 @@ import { cn } from "@/lib/utils";
  * name + active-count row by default, expanding to a dense table of their
  * complete non-DONE task list. Client only for the expand/collapse state —
  * the data itself is server-fetched and passed in whole. Each row's key links
- * out to `/projects/<projectId>?task=<id>` — the same permission-gated deep
- * link the rest of the app uses to open a task (see `MyWorkList`/
+ * out via `taskDrawerPath` (`/projects/<projectKey>?task=<taskKey>`) — the
+ * same permission-gated deep link the rest of the app uses to open a task
+ * (see `MyWorkList`/
  * `ActivityFeed`) — so a manager can jump straight from "who's behind" to the
  * task itself.
  *
@@ -133,7 +135,7 @@ export function MemberActiveTasks({
                             >
                               <td className="px-2.5 py-1.5 font-mono whitespace-nowrap">
                                 <Link
-                                  href={`/projects/${task.projectId}?task=${task.id}`}
+                                  href={taskDrawerPath(task.projectKey, task.key)}
                                   className={cn(
                                     "text-muted-foreground hover:text-primary rounded outline-none",
                                     "focus-visible:ring-ring/50 focus-visible:ring-2",

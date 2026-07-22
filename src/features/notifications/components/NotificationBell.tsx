@@ -16,6 +16,7 @@ import {
   markNotificationRead,
 } from "../actions"
 import { NotificationRow } from "./NotificationRow"
+import { taskDrawerPath } from "@/features/tasks/share"
 
 export interface NotificationBellProps {
   notifications: NotificationItem[]
@@ -38,8 +39,8 @@ export function NotificationBell({
   function openNotification(n: NotificationItem) {
     startTransition(async () => {
       if (!n.readAt) await markNotificationRead(n.id)
-      if (n.projectId && n.taskId) {
-        router.push(`/projects/${n.projectId}?task=${n.taskId}`)
+      if (n.projectKey && n.taskKey) {
+        router.push(taskDrawerPath(n.projectKey, n.taskKey))
       }
       router.refresh()
     })

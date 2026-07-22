@@ -17,6 +17,7 @@ import {
   PriorityBadge,
   StatusBadge,
 } from "@/features/tasks/components"
+import { taskDrawerPath } from "@/features/tasks/share"
 import type { ExploreTasksPage } from "../queries"
 
 export interface ExploreResultsProps {
@@ -84,7 +85,7 @@ export function ExploreResults({ data, baseQuery }: ExploreResultsProps) {
                 <TableRow key={task.id} className="relative">
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     <Link
-                      href={`/projects/${task.projectId}?task=${task.id}`}
+                      href={taskDrawerPath(task.projectKey, task.key)}
                       className="absolute inset-0 z-10"
                       aria-label={`Open ${task.key} — ${task.title}`}
                     />

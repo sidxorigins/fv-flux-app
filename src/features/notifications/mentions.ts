@@ -7,6 +7,7 @@
 
 import { prisma } from "@/lib/db";
 import { sendMentionEmail } from "@/lib/mail";
+import { taskPagePath } from "@/features/tasks/share";
 import { notify } from "./service";
 
 /** Strip tags to plain text (comments are already sanitised HTML). */
@@ -88,7 +89,7 @@ export async function notifyMentions(
     });
     if (task && actor) {
       const base = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
-      const url = `${base}/projects/${task.projectId}?task=${params.taskId}`;
+      const url = `${base}${taskPagePath(task.key)}`;
       await Promise.all(
         members
           .filter((m) => m.id !== params.actorId)

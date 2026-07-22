@@ -20,6 +20,7 @@ import {
 import type { SearchResults } from "@/features/tasks/queries"
 import { StatusBadge } from "@/features/tasks/components/StatusBadge"
 import { TypeIcon } from "@/features/tasks/components/TypeIcon"
+import { taskDrawerPath } from "@/features/tasks/share"
 
 const EMPTY: SearchResults = { tasks: [], projects: [] }
 
@@ -135,7 +136,7 @@ export function CommandPalette() {
                   key={task.id}
                   value={`task-${task.id}`}
                   onSelect={() =>
-                    go(`/projects/${task.projectId}?task=${task.id}`)
+                    go(taskDrawerPath(task.projectKey, task.key))
                   }
                 >
                   <TypeIcon type={task.type} />

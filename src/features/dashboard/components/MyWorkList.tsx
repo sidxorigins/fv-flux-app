@@ -7,7 +7,8 @@ import { CalendarDays, Check, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 import type { TaskStatus } from "@/generated/prisma/enums";
-import type { BoardTask } from "@/features/tasks/types";
+import type { MyWorkTask } from "@/features/dashboard/queries";
+import { taskDrawerPath } from "@/features/tasks/share";
 import { updateTaskStatus } from "@/features/tasks/actions";
 // Deep imports so the board + dnd-kit never enter the dashboard bundle.
 import {
@@ -29,11 +30,11 @@ import { cn } from "@/lib/utils";
 
 /**
  * Dense "my work" rows for the dashboard: key · type · title · priority · due ·
- * inline status. The row body is a stretched link into the task's board
- * (`/projects/<projectId>?task=<id>`); the status chip is a dropdown layered
- * above it that calls the updateTaskStatus server action.
+ * inline status. The row body is a stretched link into the task's board via
+ * `taskDrawerPath`; the status chip is a dropdown layered above it that calls
+ * the updateTaskStatus server action.
  */
-export function MyWorkList({ tasks }: { tasks: BoardTask[] }) {
+export function MyWorkList({ tasks }: { tasks: MyWorkTask[] }) {
   const router = useRouter();
   const now = useClientNow();
   const [pendingId, setPendingId] = React.useState<string | null>(null);
@@ -47,7 +48,7 @@ export function MyWorkList({ tasks }: { tasks: BoardTask[] }) {
     );
   }
 
-  function changeStatus(task: BoardTask, status: TaskStatus) {
+  function changeStatus(task: MyWorkTask, status: TaskStatus) {
     if (status === task.status || pendingId) return;
     setPendingId(task.id);
     startTransition(async () => {
@@ -85,7 +86,7 @@ export function MyWorkList({ tasks }: { tasks: BoardTask[] }) {
 
             {/* Stretched link: covers the whole row; controls below sit above it */}
             <Link
-              href={`/projects/${task.projectId}?task=${task.id}`}
+              href={taskDrawerPath(task.projectKey, task.key)}
               className={cn(
                 "text-foreground min-w-0 flex-1 truncate text-sm font-medium",
                 "rounded outline-none after:absolute after:inset-0 after:rounded-lg",

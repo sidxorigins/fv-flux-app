@@ -14,6 +14,7 @@ import {
   markNotificationRead,
 } from "../actions"
 import { NotificationRow } from "./NotificationRow"
+import { taskDrawerPath } from "@/features/tasks/share"
 
 export interface InboxListProps {
   initialPage: NotificationsPage
@@ -48,8 +49,8 @@ export function InboxList({ initialPage }: InboxListProps) {
     }
     startTransition(async () => {
       if (!n.readAt) await markNotificationRead(n.id)
-      if (n.projectId && n.taskId) {
-        router.push(`/projects/${n.projectId}?task=${n.taskId}`)
+      if (n.projectKey && n.taskKey) {
+        router.push(taskDrawerPath(n.projectKey, n.taskKey))
       }
       router.refresh() // keep the topbar bell badge in sync
     })

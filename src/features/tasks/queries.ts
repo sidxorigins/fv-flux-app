@@ -361,6 +361,7 @@ export interface SearchResults {
     type: TaskType;
     status: TaskStatus;
     projectId: string;
+    projectKey: string;
   }[];
   projects: { id: string; key: string; name: string }[];
 }
@@ -400,6 +401,7 @@ export async function searchEverything(rawQuery: string): Promise<SearchResults>
         type: true,
         status: true,
         projectId: true,
+        project: { select: { key: true } },
       },
       orderBy: { updatedAt: "desc" },
       take: 8,
@@ -418,5 +420,11 @@ export async function searchEverything(rawQuery: string): Promise<SearchResults>
     }),
   ]);
 
-  return { tasks, projects };
+  return {
+    tasks: tasks.map(({ project, ...task }) => ({
+      ...task,
+      projectKey: project.key,
+    })),
+    projects,
+  };
 }

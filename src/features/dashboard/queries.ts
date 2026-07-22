@@ -18,6 +18,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/permissions";
 import { getAvatarUrl } from "@/features/users/avatar";
 import { getMyTasks } from "@/features/tasks/queries";
+import type { BoardTask } from "@/features/tasks/types";
 import { bucketWorkByDue, type GroupedWork } from "./work-buckets";
 import type { Prisma } from "@/generated/prisma/client";
 import type { ProjectRole, TaskStatus } from "@/generated/prisma/enums";
@@ -317,7 +318,13 @@ export interface DashboardActivity {
   newValue: string | null;
   createdAt: Date;
   actor: { id: string; name: string; avatarUrl: string | null };
-  task: { id: string; key: string; title: string; projectId: string };
+  task: {
+    id: string;
+    key: string;
+    title: string;
+    projectId: string;
+    projectKey: string;
+  };
 }
 
 /**
@@ -343,13 +350,28 @@ export async function getRecentActivity(
       newValue: true,
       createdAt: true,
       actor: { select: { id: true, name: true, avatarKey: true } },
-      task: { select: { id: true, key: true, title: true, projectId: true } },
+      task: {
+        select: {
+          id: true,
+          key: true,
+          title: true,
+          projectId: true,
+          project: { select: { key: true } },
+        },
+      },
     },
   });
 
   return Promise.all(
-    rows.map(async ({ actor, ...row }) => ({
+    rows.map(async ({ actor, task, ...row }) => ({
       ...row,
+      task: {
+        id: task.id,
+        key: task.key,
+        title: task.title,
+        projectId: task.projectId,
+        projectKey: task.project.key,
+      },
       actor: {
         id: actor.id,
         name: actor.name,
@@ -427,12 +449,31 @@ export async function getProjectTiles(
 // My work, bucketed by urgency
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** A `BoardTask` plus its project's key, for the "My work" deep links. */
+export type MyWorkTask = BoardTask & { projectKey: string };
+
 /**
  * The signed-in user's open assigned tasks, bucketed by urgency for the
  * dashboard "My work" agenda. Reuses getMyTasks (priority/due ordering + the
- * personal/admin scoping) and buckets in memory.
+ * personal/admin scoping), attaches each task's project key (one narrow
+ * lookup over the distinct project ids), and buckets in memory.
  */
-export async function getMyWorkGrouped(): Promise<GroupedWork> {
+export async function getMyWorkGrouped(): Promise<GroupedWork<MyWorkTask>> {
   const tasks = await getMyTasks(40);
-  return bucketWorkByDue(tasks);
+
+  const projectIds = [...new Set(tasks.map((t) => t.projectId))];
+  const projects = projectIds.length
+    ? await prisma.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true, key: true },
+      })
+    : [];
+  const keyByProjectId = new Map(projects.map((p) => [p.id, p.key]));
+
+  const withProjectKey: MyWorkTask[] = tasks.map((task) => ({
+    ...task,
+    projectKey: keyByProjectId.get(task.projectId) ?? "",
+  }));
+
+  return bucketWorkByDue(withProjectKey);
 }
