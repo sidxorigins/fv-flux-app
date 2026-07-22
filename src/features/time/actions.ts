@@ -60,7 +60,8 @@ export async function startTimer(
 
     const { stoppedTaskKey } = await startTimerForUser(user.id, parsed.data.taskId);
 
-    revalidatePath(`/projects/${task.projectId}`, "layout");
+    revalidatePath("/projects/[projectKey]", "layout");
+    revalidatePath("/browse/[taskKey]", "page");
     revalidatePath("/", "layout");
     return { ok: true, data: { startedTaskKey: task.key, stoppedTaskKey } };
   } catch (err) {
@@ -72,9 +73,10 @@ export async function startTimer(
 export async function stopTimer(): Promise<ActionResult<{ stopped: boolean }>> {
   try {
     const user = await requireUser();
-    const { stopped, projectId } = await stopTimerForUser(user.id);
+    const { stopped } = await stopTimerForUser(user.id);
     if (!stopped) return { ok: true, data: { stopped: false } };
-    if (projectId) revalidatePath(`/projects/${projectId}`, "layout");
+    revalidatePath("/projects/[projectKey]", "layout");
+    revalidatePath("/browse/[taskKey]", "page");
     revalidatePath("/", "layout");
     return { ok: true, data: { stopped: true } };
   } catch (err) {
@@ -126,7 +128,8 @@ export async function updateTimeEntry(input: UpdateTimeEntryInput): Promise<Acti
       where: { id: parsed.data.id },
       data: { minutes: parsed.data.minutes },
     });
-    revalidatePath(`/projects/${auth.entry.task.projectId}`, "layout");
+    revalidatePath("/projects/[projectKey]", "layout");
+    revalidatePath("/browse/[taskKey]", "page");
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (err) {
@@ -142,7 +145,8 @@ export async function deleteTimeEntry(input: DeleteTimeEntryInput): Promise<Acti
     const auth = await authorizeManage(parsed.data.id);
     if (!auth.ok) return auth.error;
     await prisma.timeEntry.delete({ where: { id: parsed.data.id } });
-    revalidatePath(`/projects/${auth.entry.task.projectId}`, "layout");
+    revalidatePath("/projects/[projectKey]", "layout");
+    revalidatePath("/browse/[taskKey]", "page");
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (err) {

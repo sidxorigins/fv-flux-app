@@ -48,6 +48,9 @@ function toError(err: unknown): { ok: false; error: string } {
 
 function revalidate(): void {
   revalidatePath("/dashboard");
+  // Both callers (finalizeAttachment, deleteAttachment) are attachment
+  // create/delete — bust the full-page task view too.
+  revalidatePath("/browse/[taskKey]", "page");
 }
 
 /**

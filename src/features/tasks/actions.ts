@@ -73,10 +73,15 @@ function mapAuthError(err: unknown): { ok: false; error: string } | null {
   return null;
 }
 
-function revalidateProjectViews(projectId: string): void {
+function revalidateProjectViews(): void {
   revalidatePath("/dashboard");
   // "layout" revalidates every nested route under the project (board, backlog, tasks).
-  revalidatePath(`/projects/${projectId}`, "layout");
+  // Revalidate the DYNAMIC ROUTE PATTERN (not the concrete cuid/key path) — this
+  // matches every rendered /projects/<key> page regardless of which key it is.
+  revalidatePath("/projects/[projectKey]", "layout");
+  // Every caller here mutates a task's own detail (title/status/etc.), so also
+  // bust the full-page task view.
+  revalidatePath("/browse/[taskKey]", "page");
 }
 
 /** Assert `userId` is a member of `projectId`; throws ActionError otherwise. */
@@ -238,7 +243,7 @@ export async function createTask(
       });
     }
 
-    revalidateProjectViews(projectId);
+    revalidateProjectViews();
     return { ok: true, data: { id: task.id, key: task.key } };
   } catch (err) {
     const mapped = mapAuthError(err);
@@ -435,7 +440,7 @@ export async function updateTask(
       });
     }
 
-    revalidateProjectViews(current.projectId);
+    revalidateProjectViews();
     return { ok: true, data: { id: current.id } };
   } catch (err) {
     const mapped = mapAuthError(err);
@@ -549,7 +554,7 @@ export async function moveTask(input: unknown): Promise<ActionResult<{ id: strin
       }
     });
 
-    revalidateProjectViews(task.projectId);
+    revalidateProjectViews();
     return { ok: true, data: { id: taskId } };
   } catch (err) {
     const mapped = mapAuthError(err);
@@ -622,7 +627,7 @@ export async function updateTaskStatus(
       metadata: { from: task.status, to: parsed.data.status },
     });
 
-    revalidateProjectViews(task.projectId);
+    revalidateProjectViews();
     return { ok: true, data: { id: task.id } };
   } catch (err) {
     const mapped = mapAuthError(err);
@@ -691,7 +696,7 @@ export async function deleteTask(
       },
     });
 
-    revalidateProjectViews(task.projectId);
+    revalidateProjectViews();
     return { ok: true, data: { deletedR2: deleted.length, failedR2: failed.length } };
   } catch (err) {
     const mapped = mapAuthError(err);
