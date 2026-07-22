@@ -288,6 +288,19 @@ export async function getTask(taskId: string): Promise<TaskDetail | null> {
   };
 }
 
+/**
+ * Look up a task's cuid by its unique key (case-insensitive, e.g. "EISC-9").
+ * Returns null if no such task. Does NOT check access — callers pass the id to
+ * `getTask`, which enforces `canViewProject`.
+ */
+export async function resolveTaskIdByKey(key: string): Promise<string | null> {
+  const row = await prisma.task.findUnique({
+    where: { key: key.toUpperCase() },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // My work
 // ─────────────────────────────────────────────────────────────────────────────
