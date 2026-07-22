@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import type { ProjectRole } from "@/generated/prisma/enums";
 import type { ProjectTile } from "@/features/dashboard/queries";
+import { projectPath } from "@/features/tasks/share";
 import { cn } from "@/lib/utils";
 
 const ROLE_LABEL: Record<ProjectRole, string> = {
@@ -23,7 +24,7 @@ export function ProjectTiles({ tiles }: { tiles: ProjectTile[] }) {
       {tiles.map((tile) => (
         <li key={tile.id}>
           <Link
-            href={`/projects/${tile.id}`}
+            href={projectPath(tile.key)}
             className={cn(
               "group border-border bg-surface flex h-full flex-col gap-3 rounded-2xl border p-4",
               "transition-[transform,background-color] duration-150 motion-reduce:transition-none",

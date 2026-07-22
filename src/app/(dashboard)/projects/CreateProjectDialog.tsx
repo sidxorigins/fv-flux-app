@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea"
 
 import { createProject } from "@/features/projects/actions"
 import { createProjectSchema } from "@/features/projects/schemas"
+import { projectPath } from "@/features/tasks/share"
 
 // The lead is resolved server-side (the creator, unless an admin reassigns it),
 // so the dialog never collects leadId — the creator always leads their own
@@ -82,7 +83,7 @@ export function CreateProjectDialog() {
       if (res.ok && res.data) {
         toast.success("Project created")
         onOpenChange(false)
-        router.push(`/projects/${res.data.id}`)
+        router.push(projectPath(res.data.key))
       } else if (!res.ok) {
         setFormError(res.error)
       }

@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { auth } from "@/lib/auth"
+import { prisma } from "@/lib/db"
 import { AuthorizationError, PROJECT_ROLE_ORDER } from "@/lib/permissions"
 import type { ProjectRole } from "@/generated/prisma/enums"
 import { TaskPriority, TaskStatus, TaskType } from "@/generated/prisma/enums"
@@ -12,12 +13,13 @@ import { getAttachments } from "@/features/attachments/queries"
 import type { AttachmentWithUploader } from "@/features/attachments/types"
 import { getComments } from "@/features/comments/queries"
 import type { CommentWithAuthor } from "@/features/comments/types"
-import { getProject } from "@/features/projects/queries"
+import { getProject, resolveProjectIdByKey } from "@/features/projects/queries"
 import {
   getProjectMembers,
   listAssignableUsersForProject,
 } from "@/features/admin/queries"
 import { getTaskActivity } from "@/features/tasks/activity"
+import { isCuid, projectPath } from "@/features/tasks/share"
 import { getTaskWatchers, isWatchingTask } from "@/features/notifications/queries"
 import type { TaskWatcherItem } from "@/features/notifications/queries"
 import { getTaskTime, getRunningTimer, getProjectTimeReport } from "@/features/time/queries"
@@ -48,7 +50,7 @@ import { ProjectSettingsMenu } from "./ProjectSettingsMenu"
 import { ViewTabs } from "./ViewTabs"
 
 interface ProjectPageProps {
-  params: Promise<{ projectId: string }>
+  params: Promise<{ projectKey: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
@@ -87,11 +89,34 @@ export default async function ProjectPage({
   params,
   searchParams,
 }: ProjectPageProps) {
-  const { projectId } = await params
+  const { projectKey: projectSegment } = await params
   const sp = await searchParams
 
   const session = await auth()
   if (!session?.user) redirect("/login")
+
+  // Legacy cuid URLs redirect to the key-based path, preserving the query
+  // string. Existence is checked here (not access) — an unauthorised user
+  // hitting a cuid link still only learns "redirects somewhere", never
+  // whether they can see the destination; the actual access check happens
+  // after redirect (or below, via resolveProjectIdByKey + getProject).
+  if (isCuid(projectSegment)) {
+    const row = await prisma.project.findUnique({
+      where: { id: projectSegment },
+      select: { key: true },
+    })
+    if (!row) notFound()
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(sp)) {
+      if (Array.isArray(v)) v.forEach((x) => qs.append(k, x))
+      else if (v) qs.set(k, v)
+    }
+    const q = qs.toString()
+    redirect(q ? `${projectPath(row.key)}?${q}` : projectPath(row.key))
+  }
+
+  const projectId = await resolveProjectIdByKey(projectSegment)
+  if (!projectId) notFound()
 
   // getProject THROWS on no access rather than returning null (see
   // features/projects/queries.ts) — caught here and folded into the same
@@ -192,7 +217,11 @@ export default async function ProjectPage({
           savedViews={savedViews}
         />
         <div className="min-h-0 flex-1">
-          <BoardView tasks={boardTasks} disabled={!canEdit} />
+          <BoardView
+            tasks={boardTasks}
+            projectId={projectId}
+            disabled={!canEdit}
+          />
         </div>
       </div>
     )
@@ -399,7 +428,7 @@ export default async function ProjectPage({
       </header>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <ViewTabs projectId={projectId} view={view} />
+        <ViewTabs projectKey={project.key} view={view} />
         {canEdit ? (
           <CreateTaskDialog
             projectId={projectId}
