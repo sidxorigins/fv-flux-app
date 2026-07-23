@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { TaskStatus } from "@/generated/prisma/enums";
 // Deep import (server-safe module, no client barrel) for the status labels.
 import { STATUS_META } from "@/features/tasks/components/StatusBadge";
-import type { DashboardActivity } from "@/features/dashboard/queries";
+import type { DedupedActivity } from "@/features/dashboard/dedupe-activity";
 import { taskDrawerPath } from "@/features/tasks/share";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +18,7 @@ function statusLabel(value: string | null): string {
     : "a new status";
 }
 
-function describe(item: DashboardActivity): { verb: string; tail?: string } {
+function describe(item: DedupedActivity): { verb: string; tail?: string } {
   switch (item.action) {
     case "created":
       return { verb: "created" };
@@ -99,12 +99,10 @@ function initialsOf(name: string): string {
  * task links, zero client JS. Compact and scrollable; timestamps are relative
  * to render time (the page is per-request dynamic, so they're always fresh).
  */
-export function ActivityFeed({ items }: { items: DashboardActivity[] }) {
+export function ActivityFeed({ items }: { items: DedupedActivity[] }) {
   if (items.length === 0) {
     return (
-      <p className="text-muted-foreground py-8 text-center text-sm">
-        No activity yet
-      </p>
+      <p className="text-muted-foreground py-2 text-sm">No recent activity.</p>
     );
   }
 
@@ -149,6 +147,11 @@ export function ActivityFeed({ items }: { items: DashboardActivity[] }) {
                 {item.task.key}
               </Link>
               {tail ?? ""}
+              {item.count > 1 ? (
+                <span className="bg-surface-raised text-muted-foreground ml-1.5 rounded px-1 text-[11px] tabular-nums">
+                  ×{item.count}
+                </span>
+              ) : null}
               {/* muted-foreground is the contrast floor (CLAUDE.md) — never dimmer */}
               <span className="text-muted-foreground ml-1.5 text-xs whitespace-nowrap">
                 {relativeTime(item.createdAt, now)}
