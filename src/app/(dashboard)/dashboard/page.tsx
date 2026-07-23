@@ -1,12 +1,7 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  CalendarClock,
-  CheckCircle2,
-  Eye,
-  ListTodo,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
+import { prisma } from "@/lib/db";
 import { getCreatableProjects } from "@/features/projects/queries";
 import {
   getDashboardScope,
@@ -18,17 +13,20 @@ import {
   getThroughput,
   getWorkload,
 } from "@/features/dashboard/queries";
-import { getNotificationsPage } from "@/features/notifications/queries";
+import { dedupeActivity } from "@/features/dashboard/dedupe-activity";
+import {
+  getNotificationsPage,
+  getUnreadNotificationCount,
+} from "@/features/notifications/queries";
 import { getMyLoggedHours } from "@/features/time/queries";
 import { MyLoggedHours } from "@/features/time/components/MyLoggedHours";
-import { KpiCard } from "@/features/dashboard/components/KpiCard";
-import {
-  StatusDonut,
-  ThroughputArea,
-  WorkloadBar,
-} from "@/features/dashboard/components/Charts";
+import { StatusDonut } from "@/features/dashboard/components/Charts";
+import { ThroughputSpark } from "@/features/dashboard/components/ThroughputSpark";
+import { WorkloadBars } from "@/features/dashboard/components/WorkloadBars";
+import { HeroBand } from "@/features/dashboard/components/HeroBand";
 import { GroupedWorkList } from "@/features/dashboard/components/GroupedWorkList";
 import { InboxPanel } from "@/features/dashboard/components/InboxPanel";
+import { InboxActivityTabs } from "@/features/dashboard/components/InboxActivityTabs";
 import { ActivityFeed } from "@/features/dashboard/components/ActivityFeed";
 import { ProjectTiles } from "@/features/dashboard/components/ProjectTiles";
 import { DashboardEntrance } from "@/features/dashboard/components/DashboardEntrance";
@@ -74,37 +72,61 @@ function ScopeChip({ scope }: { scope: "you" | "team" }) {
   );
 }
 
-/** Glass panel — the dashboard-card chrome (charts, lists). */
+/** Glass panel — the dashboard-card chrome. */
 function Panel({
   title,
   scope,
   action,
   children,
+  className,
 }: {
-  title: string;
+  title?: string;
   scope?: "you" | "team";
   action?: React.ReactNode;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <section className="glass flex flex-col gap-3 p-5">
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <SectionHeading>{title}</SectionHeading>
-          {scope ? <ScopeChip scope={scope} /> : null}
+    <section className={cn("glass flex flex-col gap-3 p-5", className)}>
+      {title ? (
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <SectionHeading>{title}</SectionHeading>
+            {scope ? <ScopeChip scope={scope} /> : null}
+          </div>
+          {action}
         </div>
-        {action}
-      </div>
+      ) : null}
       {children}
     </section>
   );
 }
 
+/** Cell header inside the Pulse band (no glass — the band is the panel). */
+function PulseCell({
+  title,
+  scope,
+  children,
+}: {
+  title: string;
+  scope: "you" | "team";
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-border flex min-w-0 flex-col gap-3 p-5 max-sm:not-first:border-t sm:max-xl:nth-[2n]:border-l sm:max-xl:nth-[n+3]:border-t xl:not-first:border-l">
+      <div className="flex items-center gap-2">
+        <SectionHeading>{title}</SectionHeading>
+        <ScopeChip scope={scope} />
+      </div>
+      {children}
+    </div>
+  );
+}
+
 /**
- * The flagship screen. Everything is fetched server-side in one Promise.all —
- * the scope (session user + member-project ids) resolves once and is shared by
- * every aggregate query. The only client JS on the page: the two chart panels,
- * the inline status dropdowns, and the one entrance wrapper.
+ * The flagship screen — "focus hero + dense grid". Everything fetched
+ * server-side in one Promise.all; scope resolves once. Client JS on the page:
+ * chart components, the tab toggle, inline status dropdowns, entrance wrapper.
  */
 export default async function DashboardPage() {
   const scope = await getDashboardScope();
@@ -135,6 +157,7 @@ export default async function DashboardPage() {
   }
 
   const [
+    me,
     kpis,
     statusDist,
     throughput,
@@ -143,140 +166,97 @@ export default async function DashboardPage() {
     tiles,
     work,
     inbox,
+    unreadCount,
     creatable,
     loggedHours,
   ] = await Promise.all([
+    prisma.user.findUniqueOrThrow({
+      where: { id: scope.userId },
+      select: { name: true, username: true },
+    }),
     getKpis(scope),
     getStatusDistribution(scope),
     getThroughput(scope),
     getWorkload(scope),
-    getRecentActivity(12, scope),
+    getRecentActivity(20, scope),
     getProjectTiles(scope),
     getMyWorkGrouped(),
     getNotificationsPage({ unreadOnly: true, limit: 5 }),
+    getUnreadNotificationCount(),
     getCreatableProjects(),
     getMyLoggedHours(),
   ]);
 
-  const completedDelta = kpis.completedThisWeek - kpis.completedLastWeek;
+  const firstName = (me.name.trim().split(/\s+/)[0] || me.username) ?? "there";
+  const deduped = dedupeActivity(activity);
+
+  const viewAll = (href: string, label = "View all") => (
+    <Link
+      href={href}
+      className="text-primary hover:text-primary-hover focus-visible:ring-ring/50 flex items-center gap-1 rounded text-xs font-medium outline-none focus-visible:ring-2"
+    >
+      {label}
+      <ArrowRight aria-hidden className="size-3" />
+    </Link>
+  );
 
   return (
     <DashboardEntrance>
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="text-foreground text-2xl font-semibold tracking-tight">
-            Dashboard
-          </h1>
-          {creatable.length > 0 ? (
-            <span data-tour="create-task"><CreateTaskDialog projects={creatable} /></span>
-          ) : null}
-        </div>
+      <div className="flex flex-col gap-4">
+        {/* Hero — greeting, date, summary, CTA, inline KPIs */}
+        <HeroBand
+          firstName={firstName}
+          kpis={kpis}
+          cta={
+            creatable.length > 0 ? (
+              <span data-tour="create-task">
+                <CreateTaskDialog projects={creatable} />
+              </span>
+            ) : undefined
+          }
+        />
 
-        {/* KPI row — glass stat cards, real numbers from first paint */}
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-tour="dashboard-kpis">
-          <KpiCard
-            label="My open tasks"
-            value={kpis.openAssigned}
-            icon={ListTodo}
-            iconClass="text-info"
-            caption="assigned to you"
-          />
-          <KpiCard
-            label="Due soon"
-            value={kpis.dueSoon}
-            icon={CalendarClock}
-            iconClass={kpis.overdue > 0 ? "text-danger" : "text-warning"}
-            caption={
-              kpis.overdue > 0 ? (
-                <span className="text-danger font-medium">
-                  {kpis.overdue} overdue
-                </span>
-              ) : (
-                "next 7 days"
-              )
-            }
-          />
-          <KpiCard
-            label="In review"
-            value={kpis.inReview}
-            icon={Eye}
-            iconClass="text-warning"
-            caption="awaiting review"
-          />
-          <KpiCard
-            label="Completed this week"
-            value={kpis.completedThisWeek}
-            icon={CheckCircle2}
-            iconClass="text-success"
-            delta={{ value: completedDelta, meaning: "up-good" }}
-          />
-        </div>
-
-        {/* Main bento: 2/3 work + trends, 1/3 inbox + distribution + activity */}
-        <div className="grid items-start gap-4 lg:grid-cols-3">
-          <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
-            <div data-tour="dashboard-mywork">
-              <Panel
-                title="My work"
-                scope="you"
-                action={
-                  <Link
-                    href="/tasks"
-                    className="text-primary hover:text-primary-hover focus-visible:ring-ring/50 flex items-center gap-1 rounded text-xs font-medium outline-none focus-visible:ring-2"
-                  >
-                    View all
-                    <ArrowRight aria-hidden className="size-3" />
-                  </Link>
-                }
-              >
-                <GroupedWorkList work={work} />
-              </Panel>
-            </div>
-
-            <Panel title="Throughput — completed per week" scope="team">
-              <ThroughputArea data={throughput} />
-            </Panel>
-
-            <Panel title="Workload — open tasks by assignee" scope="team">
-              <WorkloadBar data={workload} />
+        {/* Work row — agenda 2/3, merged inbox/activity 1/3. Grid items
+            stretch (default) so the two panel bottoms align — no dead band
+            under the shorter panel. */}
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div data-tour="dashboard-mywork" className="min-w-0 lg:col-span-2">
+            <Panel className="h-full" title="My work" scope="you" action={viewAll("/tasks")}>
+              <GroupedWorkList work={work} />
             </Panel>
           </div>
 
-          <div className="flex min-w-0 flex-col gap-4">
-            <Panel
-              title="Inbox"
-              scope="you"
-              action={
-                <Link
-                  href="/inbox"
-                  className="text-primary hover:text-primary-hover focus-visible:ring-ring/50 flex items-center gap-1 rounded text-xs font-medium outline-none focus-visible:ring-2"
-                >
-                  View all
-                  <ArrowRight aria-hidden className="size-3" />
-                </Link>
-              }
-            >
-              <InboxPanel notifications={inbox.items} />
-            </Panel>
-
-            <Panel title="My logged hours" scope="you">
-              <MyLoggedHours data={loggedHours} />
-            </Panel>
-
-            <Panel title="Status distribution" scope="team">
-              <StatusDonut data={statusDist} />
-            </Panel>
-
-            <Panel title="Recent activity" scope="team">
-              <ActivityFeed items={activity} />
-            </Panel>
-          </div>
+          <Panel className="min-w-0" title="Updates" scope="you" action={viewAll("/inbox")}>
+            <InboxActivityTabs
+              unreadCount={unreadCount}
+              inbox={<InboxPanel notifications={inbox.items} />}
+              activity={<ActivityFeed items={deduped} />}
+            />
+          </Panel>
         </div>
 
-        {/* Project shortcuts */}
-        <section className="flex flex-col gap-3">
-          <SectionHeading>Projects</SectionHeading>
-          <ProjectTiles tiles={tiles} />
+        {/* Projects rail */}
+        {tiles.length > 0 ? (
+          <section className="flex flex-col gap-3">
+            <SectionHeading>Projects</SectionHeading>
+            <ProjectTiles tiles={tiles} />
+          </section>
+        ) : null}
+
+        {/* Pulse band — compact, data-aware team/personal vitals */}
+        <section className="glass grid p-0 sm:grid-cols-2 xl:grid-cols-4">
+          <PulseCell title="Status" scope="team">
+            <StatusDonut data={statusDist} compact />
+          </PulseCell>
+          <PulseCell title="Throughput" scope="team">
+            <ThroughputSpark data={throughput} />
+          </PulseCell>
+          <PulseCell title="Workload" scope="team">
+            <WorkloadBars data={workload} />
+          </PulseCell>
+          <PulseCell title="My hours" scope="you">
+            <MyLoggedHours data={loggedHours} />
+          </PulseCell>
         </section>
       </div>
 

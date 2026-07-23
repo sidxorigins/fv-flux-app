@@ -391,13 +391,15 @@ export interface ProjectTile {
   name: string;
   role: ProjectRole;
   openTaskCount: number;
+  /** Per-status counts for the tile's thin progress bar. */
+  statusCounts: { todo: number; inProgress: number; inReview: number; done: number };
 }
 
 /**
  * Slim variant of getMyProjects for the bento tiles. For a global Admin this
  * lists EVERY project (one-click access to any board from the landing page);
- * for everyone else it's their memberships only. Open-task count comes from a
- * filtered `_count`, never task rows. (Note: the rest of the dashboard — KPIs,
+ * for everyone else it's their memberships only. Status counts come from one
+ * grouped count over all tiles, never task rows. (Note: the rest of the dashboard — KPIs,
  * charts, my work — stays personal-scope even for admins; only these shortcut
  * tiles widen.)
  */
@@ -406,43 +408,54 @@ export async function getProjectTiles(
 ): Promise<ProjectTile[]> {
   const s = scope ?? (await getDashboardScope());
 
-  const tileSelect = {
-    id: true,
-    key: true,
-    name: true,
-    _count: { select: { tasks: { where: { status: { not: "DONE" as const } } } } },
-  };
+  const tileSelect = { id: true, key: true, name: true };
 
+  // Resolve the visible projects (+ per-user role) first…
+  let base: { id: string; key: string; name: string; role: ProjectRole }[];
   if (s.isAdmin) {
     const projects = await prisma.project.findMany({
       orderBy: { createdAt: "desc" },
       select: tileSelect,
     });
-    return projects.map((project) => ({
-      id: project.id,
-      key: project.key,
-      name: project.name,
-      role: "MANAGER", // admin effective role (bypass policy, matches getMyProjects)
-      openTaskCount: project._count.tasks,
+    // admin effective role (bypass policy, matches getMyProjects)
+    base = projects.map((p) => ({ ...p, role: "MANAGER" as const }));
+  } else {
+    const memberships = await prisma.projectMembership.findMany({
+      where: { userId: s.userId },
+      orderBy: { project: { createdAt: "desc" } },
+      select: { projectRole: true, project: { select: tileSelect } },
+    });
+    base = memberships.map(({ projectRole, project }) => ({
+      ...project,
+      role: projectRole,
     }));
   }
+  if (base.length === 0) return [];
 
-  const memberships = await prisma.projectMembership.findMany({
-    where: { userId: s.userId },
-    orderBy: { project: { createdAt: "desc" } },
-    select: {
-      projectRole: true,
-      project: { select: tileSelect },
-    },
+  // …then ONE grouped count over all of them (no per-task rows).
+  const grouped = await prisma.task.groupBy({
+    by: ["projectId", "status"],
+    where: { projectId: { in: base.map((p) => p.id) } },
+    _count: { _all: true },
   });
+  const countFor = (projectId: string, status: TaskStatus): number =>
+    grouped.find((g) => g.projectId === projectId && g.status === status)
+      ?._count._all ?? 0;
 
-  return memberships.map(({ projectRole, project }) => ({
-    id: project.id,
-    key: project.key,
-    name: project.name,
-    role: projectRole,
-    openTaskCount: project._count.tasks,
-  }));
+  return base.map((p) => {
+    const statusCounts = {
+      todo: countFor(p.id, "TODO"),
+      inProgress: countFor(p.id, "IN_PROGRESS"),
+      inReview: countFor(p.id, "IN_REVIEW"),
+      done: countFor(p.id, "DONE"),
+    };
+    return {
+      ...p,
+      openTaskCount:
+        statusCounts.todo + statusCounts.inProgress + statusCounts.inReview,
+      statusCounts,
+    };
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

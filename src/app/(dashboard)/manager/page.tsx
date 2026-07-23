@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { isManagerOfAnyTeam, requireUser } from "@/lib/permissions";
+import { dedupeActivity } from "@/features/dashboard/dedupe-activity";
 import {
   getManagerActiveTasksByMember,
   getManagerKpis,
@@ -246,7 +247,7 @@ export default async function ManagerPage() {
             </Panel>
 
             <Panel title="Team activity">
-              <ActivityFeed items={activity} />
+              <ActivityFeed items={dedupeActivity(activity)} />
             </Panel>
           </div>
         </div>

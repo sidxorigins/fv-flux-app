@@ -16,7 +16,7 @@ export function dashboardTourSteps(isAdmin: boolean): TourStep[] {
     ...(isAdmin
       ? [{ target: '[data-tour="nav-admin"]', title: "Admin", body: "Manage users, invites, per-project access, and API keys.", placement: "right" as const }]
       : []),
-    { target: '[data-tour="dashboard-kpis"]', title: "Your KPIs", body: "At a glance: open tasks, due soon, in review, and completed this week.", placement: "bottom" },
+    { target: '[data-tour="dashboard-kpis"]', title: "Your KPIs", body: "At a glance: your open, due, in-review, and completed work.", placement: "bottom" },
     { target: '[data-tour="dashboard-mywork"]', title: "My work", body: "Your tasks by priority and due date — change status inline, no page load.", placement: "top" },
     { target: '[data-tour="create-task"]', title: "Create a task", body: "Spin up a task anytime from here.", placement: "bottom" },
     { target: null, title: "You're set", body: "That's the tour. Replay anytime from “Take a tour” in the top bar." },

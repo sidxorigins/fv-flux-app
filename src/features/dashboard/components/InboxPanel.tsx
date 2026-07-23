@@ -46,7 +46,8 @@ export function InboxPanel({
 
   if (items.length === 0) {
     return (
-      <p className="text-muted-foreground py-8 text-center text-sm">
+      <p className="text-muted-foreground flex items-center gap-1.5 py-2 text-sm">
+        <span aria-hidden className="text-success">✓</span>
         You&apos;re all caught up.
       </p>
     );
