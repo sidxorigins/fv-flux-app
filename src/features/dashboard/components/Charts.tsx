@@ -100,7 +100,13 @@ function PanelTooltip({
 // Status donut
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function StatusDonut({ data }: { data: StatusDistribution }) {
+export function StatusDonut({
+  data,
+  compact = false,
+}: {
+  data: StatusDistribution;
+  compact?: boolean;
+}) {
   const total = data.reduce((sum, d) => sum + d.count, 0);
   const slices = data
     .filter((d) => d.count > 0)
@@ -112,7 +118,7 @@ export function StatusDonut({ data }: { data: StatusDistribution }) {
 
   if (total === 0) {
     return (
-      <div className="h-[200px]">
+      <div className={compact ? "h-[120px]" : "h-[200px]"}>
         <NoData />
       </div>
     );
@@ -125,7 +131,7 @@ export function StatusDonut({ data }: { data: StatusDistribution }) {
         aria-label={`Status distribution donut chart: ${data
           .map((d) => `${STATUS_META[d.status].label} ${d.count}`)
           .join(", ")}`}
-        className="relative h-[180px]"
+        className={compact ? "relative h-[120px]" : "relative h-[180px]"}
       >
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
@@ -149,7 +155,13 @@ export function StatusDonut({ data }: { data: StatusDistribution }) {
         </ResponsiveContainer>
         {/* Centre total — plain DOM so it's readable before any SVG animates */}
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-foreground text-2xl leading-none font-semibold tabular-nums">
+          <span
+            className={
+              compact
+                ? "text-foreground text-lg leading-none font-semibold tabular-nums"
+                : "text-foreground text-2xl leading-none font-semibold tabular-nums"
+            }
+          >
             {total}
           </span>
           <span className="text-muted-foreground mt-1 text-[11px]">tasks</span>
