@@ -216,10 +216,12 @@ export default async function DashboardPage() {
           }
         />
 
-        {/* Work row — agenda 2/3, merged inbox/activity 1/3 */}
-        <div className="grid items-start gap-4 lg:grid-cols-3">
+        {/* Work row — agenda 2/3, merged inbox/activity 1/3. Grid items
+            stretch (default) so the two panel bottoms align — no dead band
+            under the shorter panel. */}
+        <div className="grid gap-4 lg:grid-cols-3">
           <div data-tour="dashboard-mywork" className="min-w-0 lg:col-span-2">
-            <Panel title="My work" scope="you" action={viewAll("/tasks")}>
+            <Panel className="h-full" title="My work" scope="you" action={viewAll("/tasks")}>
               <GroupedWorkList work={work} />
             </Panel>
           </div>
