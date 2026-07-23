@@ -14,7 +14,7 @@ export function WorkloadBars({ data }: { data: WorkloadEntry[] }) {
 
   const shown = data.slice(0, MAX_ROWS);
   const hidden = data.length - shown.length;
-  const max = Math.max(...shown.map((d) => d.openTasks));
+  const max = Math.max(1, ...shown.map((d) => d.openTasks));
 
   return (
     <ul className="flex flex-col gap-2">
