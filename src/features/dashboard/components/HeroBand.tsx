@@ -35,17 +35,18 @@ export function HeroBand({
     alarm?: boolean;
   }[] = [
     { label: "My open tasks", value: kpis.openAssigned, sub: "assigned to you" },
-    {
-      label: "Due soon",
-      value: kpis.dueSoon,
-      sub:
-        kpis.overdue > 0 ? (
-          <span className="text-danger font-medium">{kpis.overdue} overdue</span>
-        ) : (
-          "next 7 days"
-        ),
-      alarm: kpis.overdue > 0,
-    },
+    kpis.overdue > 0
+      ? {
+          label: "Overdue",
+          value: kpis.overdue,
+          sub: kpis.dueSoon > 0 ? `${kpis.dueSoon} due soon` : "past due",
+          alarm: true,
+        }
+      : {
+          label: "Due soon",
+          value: kpis.dueSoon,
+          sub: "next 7 days",
+        },
     { label: "In review", value: kpis.inReview, sub: "awaiting review" },
     {
       label: "Completed this week",
@@ -88,7 +89,7 @@ export function HeroBand({
               "flex flex-col gap-1 px-4 first:pl-0",
               // hairline dividers between blocks (skip the row start)
               i > 0 && "border-border sm:border-l",
-              i === 2 && "max-xl:border-l-0",
+              i === 2 && "max-xl:border-l-0 max-xl:pl-0",
             )}
           >
             <span className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
