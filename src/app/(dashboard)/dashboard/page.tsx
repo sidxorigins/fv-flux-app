@@ -14,7 +14,10 @@ import {
   getWorkload,
 } from "@/features/dashboard/queries";
 import { dedupeActivity } from "@/features/dashboard/dedupe-activity";
-import { getNotificationsPage } from "@/features/notifications/queries";
+import {
+  getNotificationsPage,
+  getUnreadNotificationCount,
+} from "@/features/notifications/queries";
 import { getMyLoggedHours } from "@/features/time/queries";
 import { MyLoggedHours } from "@/features/time/components/MyLoggedHours";
 import { StatusDonut } from "@/features/dashboard/components/Charts";
@@ -110,7 +113,7 @@ function PulseCell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border-border flex min-w-0 flex-col gap-3 p-5 sm:not-first:border-l max-sm:not-first:border-t">
+    <div className="border-border flex min-w-0 flex-col gap-3 p-5 max-sm:not-first:border-t sm:max-xl:nth-[2n]:border-l sm:max-xl:nth-[n+3]:border-t xl:not-first:border-l">
       <div className="flex items-center gap-2">
         <SectionHeading>{title}</SectionHeading>
         <ScopeChip scope={scope} />
@@ -163,6 +166,7 @@ export default async function DashboardPage() {
     tiles,
     work,
     inbox,
+    unreadCount,
     creatable,
     loggedHours,
   ] = await Promise.all([
@@ -178,6 +182,7 @@ export default async function DashboardPage() {
     getProjectTiles(scope),
     getMyWorkGrouped(),
     getNotificationsPage({ unreadOnly: true, limit: 5 }),
+    getUnreadNotificationCount(),
     getCreatableProjects(),
     getMyLoggedHours(),
   ]);
@@ -221,7 +226,7 @@ export default async function DashboardPage() {
 
           <Panel className="min-w-0" title="Updates" scope="you" action={viewAll("/inbox")}>
             <InboxActivityTabs
-              unreadCount={inbox.items.length}
+              unreadCount={unreadCount}
               inbox={<InboxPanel notifications={inbox.items} />}
               activity={<ActivityFeed items={deduped} />}
             />
