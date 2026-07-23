@@ -7,6 +7,13 @@
 #
 # Server env lives in /var/www/flux/.env (never synced from here; edit it
 # on the box if credentials change).
+#
+# DB: box-local PostgreSQL 16, database "flux" as role flux_app (migrated off
+# Prisma Postgres 2026-07-23). There is no managed/cloud backup anymore, so
+# scripts/pre-migrate-backup.sh takes a timestamped pg_dump of the flux DB into
+# /var/www/flux/db-backups/ before every `prisma migrate deploy` (last 10 kept).
+# That dir is rsync-excluded so deploys don't wipe it. Restore a dump with:
+#   pg_restore -h 127.0.0.1 -U flux_app -d flux --clean --if-exists <dump>
 set -euo pipefail
 
 PEM="${FLUX_DEPLOY_PEM:-$HOME/Downloads/fv-emailer-dashboard/test.pem}"
@@ -30,14 +37,19 @@ rsync -az --delete \
   --exclude test-results \
   --exclude playwright-report \
   --exclude .prisma \
+  --exclude db-backups \
   --exclude "*.tsbuildinfo" \
   "$(dirname "$0")/" \
   "$HOST:$REMOTE_DIR/"
 
-echo "=== installing, migrating & building ==="
+echo "=== installing, backing up DB, migrating & building ==="
 # npm install (not ci): the lockfile drifts on linux-only optional deps.
+# scripts/pre-migrate-backup.sh pg_dumps the local flux DB (self-hosted now, no
+# cloud backup) and aborts under set -e on failure, so a migration never runs
+# against an unbacked DB.
 $SSH "$HOST" "set -e && cd $REMOTE_DIR \
   && npm install --no-audit --no-fund \
+  && bash scripts/pre-migrate-backup.sh \
   && npx prisma migrate deploy \
   && npm run build"
 
