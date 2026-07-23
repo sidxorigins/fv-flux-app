@@ -398,8 +398,8 @@ export interface ProjectTile {
 /**
  * Slim variant of getMyProjects for the bento tiles. For a global Admin this
  * lists EVERY project (one-click access to any board from the landing page);
- * for everyone else it's their memberships only. Open-task count comes from a
- * filtered `_count`, never task rows. (Note: the rest of the dashboard — KPIs,
+ * for everyone else it's their memberships only. Status counts come from one
+ * grouped count over all tiles, never task rows. (Note: the rest of the dashboard — KPIs,
  * charts, my work — stays personal-scope even for admins; only these shortcut
  * tiles widen.)
  */
