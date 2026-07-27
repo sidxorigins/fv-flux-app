@@ -818,9 +818,16 @@ Create `src/features/executive/queries.ts`:
 // filters an aggregate.
 //
 // EFFICIENCY: aggregates come from groupBy/count or narrow selects. The ONLY
-// row-level read is the attention list, which is capped. The page resolves the
-// scope ONCE and passes it to each query so Promise.all() doesn't re-authorise
-// six times; each query still resolves its own scope when called standalone.
+// row-level read is the attention list (added in a later task), which is capped.
+// The page resolves the scope ONCE and passes it to each query so the membership
+// lookup isn't repeated; each query still resolves its own scope when called
+// standalone.
+//
+// AUTHORISATION: every exported query calls requireExecutive() UNCONDITIONALLY.
+// The `scope` parameter is data, never a capability token — ExecutiveScope is a
+// plain structural interface, so trusting its presence would let any object of
+// that shape read org-wide figures. requireUser() is request-memoised with
+// React cache(), so the repeated checks cost one DB lookup per request.
 
 import { prisma } from "@/lib/db";
 import { requireExecutive } from "@/lib/permissions";
@@ -897,7 +904,12 @@ export interface ExecutiveKpis {
 export async function getExecutiveKpis(
   scope?: ExecutiveScope,
 ): Promise<ExecutiveKpis> {
-  if (!scope) await requireExecutive();
+  // UNCONDITIONAL: `scope` is data, never an authorisation token. It is a plain
+  // structural interface, so trusting its mere presence would let any object of
+  // that shape read org-wide figures. requireUser() is request-memoised (see
+  // lib/permissions.ts), so re-authorising in every query costs one DB lookup
+  // per request, not one per query.
+  await requireExecutive();
 
   const now = new Date();
   const thisWeekStart = startOfIsoWeek(now);
@@ -962,7 +974,7 @@ export interface OrgThroughputWeek {
 export async function getOrgThroughput(
   scope?: ExecutiveScope,
 ): Promise<OrgThroughputWeek[]> {
-  if (!scope) await requireExecutive();
+  await requireExecutive();
 
   const WEEKS = 8;
   const thisWeekStart = startOfIsoWeek(new Date());
@@ -1221,6 +1233,7 @@ const HEALTH_ORDER: Record<ProjectHealth, number> = {
 export async function getProjectHealth(
   scope?: ExecutiveScope,
 ): Promise<ExecutiveProject[]> {
+  await requireExecutive(); // unconditional — see getExecutiveKpis
   const s = scope ?? (await getExecutiveScope());
 
   const now = new Date();
@@ -1424,6 +1437,7 @@ const KIND_ORDER: Record<AttentionKind, number> = {
 export async function getAttentionItems(
   scope?: ExecutiveScope,
 ): Promise<AttentionItem[]> {
+  await requireExecutive(); // unconditional — see getExecutiveKpis
   const s = scope ?? (await getExecutiveScope());
 
   const now = new Date();
@@ -1533,7 +1547,7 @@ const WORKLOAD_LIMIT = 10;
 export async function getOrgWorkload(
   scope?: ExecutiveScope,
 ): Promise<OrgWorkloadEntry[]> {
-  if (!scope) await requireExecutive();
+  await requireExecutive(); // unconditional — see getExecutiveKpis
 
   const now = new Date();
 
