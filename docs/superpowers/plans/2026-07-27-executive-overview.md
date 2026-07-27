@@ -1378,25 +1378,131 @@ total regardless of project count."
 ### Task 7: Attention list and org workload
 
 **Files:**
+- Create: `src/features/executive/attention.ts`
+- Create: `src/features/executive/attention.test.ts`
 - Modify: `src/features/executive/queries.ts` (append both queries)
 
 **Interfaces:**
 - Consumes: `ExecutiveScope`, `OPEN_STATUSES`, `DAY_MS` from Tasks 5–6.
 - Produces:
-  - `type AttentionKind = "OVERDUE" | "STUCK_IN_REVIEW" | "UNOWNED_URGENT"`
-  - `interface AttentionItem { id: string; taskKey: string; projectId: string; projectKey: string; title: string; kind: AttentionKind; ageDays: number; assigneeName: string | null; canOpen: boolean }`
-  - `getAttentionItems(scope?: ExecutiveScope): Promise<AttentionItem[]>`
-  - `interface OrgWorkloadEntry { userId: string; name: string; openTasks: number; overdueTasks: number }`
-  - `getOrgWorkload(): Promise<OrgWorkloadEntry[]>` — takes no scope; every figure is org-wide.
+  - from `attention.ts`: `type AttentionKind = "OVERDUE" | "STUCK_IN_REVIEW" | "UNOWNED_URGENT"`; `interface AttentionItem { id: string; taskKey: string; projectId: string; projectKey: string; title: string; kind: AttentionKind; ageDays: number; assigneeName: string | null; canOpen: boolean }`; `ATTENTION_CAP: number`; `rankAttention(candidates: AttentionItem[], cap?: number): AttentionItem[]`
+  - from `queries.ts`: `getAttentionItems(scope?: ExecutiveScope): Promise<AttentionItem[]>`; `interface OrgWorkloadEntry { userId: string; name: string; openTasks: number; overdueTasks: number }`; `getOrgWorkload(): Promise<OrgWorkloadEntry[]>` — takes no scope, every figure is org-wide.
 
-- [ ] **Step 1: Append the attention query**
+> **Why the ranking is a separate pure module.** A first cut ranked strictly by kind and sliced to 15, which meant a busy org's overdue backlog could fill every slot and render the other two categories *invisible* — not down-ranked, absent, with nothing saying they existed. On a screen whose entire job is "what needs your attention," silently hiding two of three problem categories is the worst failure it can have. The reservation pass below fixes that, and it lives in a pure, table-tested module because it is exactly the kind of logic that breaks silently.
 
-Add to `src/features/executive/queries.ts`:
+- [ ] **Step 1: Write the failing ranking tests**
+
+Create `src/features/executive/attention.test.ts`:
 
 ```ts
-// ─────────────────────────────────────────────────────────────────────────────
-// Needs attention
-// ─────────────────────────────────────────────────────────────────────────────
+import { describe, expect, it } from "vitest";
+
+import { rankAttention, type AttentionItem, type AttentionKind } from "./attention";
+
+function item(kind: AttentionKind, ageDays: number, id: string): AttentionItem {
+  return {
+    id,
+    taskKey: `OPS-${id}`,
+    projectId: "p1",
+    projectKey: "OPS",
+    title: `Task ${id}`,
+    kind,
+    ageDays,
+    assigneeName: null,
+    canOpen: true,
+  };
+}
+
+function many(kind: AttentionKind, n: number, prefix: string): AttentionItem[] {
+  return Array.from({ length: n }, (_, i) => item(kind, n - i, `${prefix}${i}`));
+}
+
+const countBy = (items: AttentionItem[], kind: AttentionKind): number =>
+  items.filter((i) => i.kind === kind).length;
+
+describe("rankAttention", () => {
+  it("returns everything when the total fits under the cap", () => {
+    const result = rankAttention(
+      [...many("OVERDUE", 2, "o"), ...many("STUCK_IN_REVIEW", 1, "s")],
+      15,
+    );
+    expect(result).toHaveLength(3);
+  });
+
+  it("never lets one kind crowd the others out entirely", () => {
+    // The defect this function exists to prevent: 20 overdue would otherwise
+    // fill all 15 slots and hide 8 real problems completely.
+    const result = rankAttention(
+      [
+        ...many("OVERDUE", 20, "o"),
+        ...many("STUCK_IN_REVIEW", 5, "s"),
+        ...many("UNOWNED_URGENT", 3, "u"),
+      ],
+      15,
+    );
+    expect(result).toHaveLength(15);
+    expect(countBy(result, "STUCK_IN_REVIEW")).toBeGreaterThan(0);
+    expect(countBy(result, "UNOWNED_URGENT")).toBeGreaterThan(0);
+    expect(countBy(result, "OVERDUE")).toBeGreaterThan(0);
+  });
+
+  it("gives leftover slots to the higher-precedence kinds", () => {
+    const result = rankAttention(
+      [
+        ...many("OVERDUE", 20, "o"),
+        ...many("STUCK_IN_REVIEW", 5, "s"),
+        ...many("UNOWNED_URGENT", 3, "u"),
+      ],
+      15,
+    );
+    // Each kind reserves up to 3, then OVERDUE takes the remaining 6.
+    expect(countBy(result, "OVERDUE")).toBe(9);
+    expect(countBy(result, "STUCK_IN_REVIEW")).toBe(3);
+    expect(countBy(result, "UNOWNED_URGENT")).toBe(3);
+  });
+
+  it("does not reserve slots for a kind with no items", () => {
+    const result = rankAttention(many("OVERDUE", 20, "o"), 15);
+    expect(result).toHaveLength(15);
+    expect(countBy(result, "OVERDUE")).toBe(15);
+  });
+
+  it("orders the result by kind precedence, then by age descending", () => {
+    const result = rankAttention(
+      [item("STUCK_IN_REVIEW", 9, "s1"), item("OVERDUE", 1, "o1"), item("OVERDUE", 7, "o2")],
+      15,
+    );
+    expect(result.map((i) => i.id)).toEqual(["o2", "o1", "s1"]);
+  });
+
+  it("drops duplicates by id, keeping the highest-precedence kind", () => {
+    const result = rankAttention(
+      [item("OVERDUE", 3, "dup"), item("UNOWNED_URGENT", 3, "dup")],
+      15,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]!.kind).toBe("OVERDUE");
+  });
+
+  it("returns an empty list for no candidates", () => {
+    expect(rankAttention([], 15)).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `npx vitest run src/features/executive/attention.test.ts`
+Expected: FAIL — cannot resolve `./attention`.
+
+- [ ] **Step 3: Create the pure ranking module**
+
+Create `src/features/executive/attention.ts`:
+
+```ts
+// The "needs attention" item shape and its ranking rule. Pure and
+// Prisma-free, so both the server query and a client component can import it,
+// and so the ranking is unit-testable without a database.
 
 export type AttentionKind = "OVERDUE" | "STUCK_IN_REVIEW" | "UNOWNED_URGENT";
 
@@ -1407,28 +1513,121 @@ export interface AttentionItem {
   projectKey: string;
   title: string;
   kind: AttentionKind;
-  /** Days overdue, or days sitting in review — whichever the kind implies. */
+  /**
+   * Days overdue (OVERDUE), days sitting in review (STUCK_IN_REVIEW), or days
+   * since creation (UNOWNED_URGENT). Always a real elapsed-day count — never a
+   * placeholder — so it is safe to both display and sort on.
+   */
   ageDays: number;
   assigneeName: string | null;
   canOpen: boolean;
 }
 
-const ATTENTION_CAP = 15;
-const REVIEW_STUCK_DAYS = 5;
+/** How many rows the list shows in total. */
+export const ATTENTION_CAP = 15;
 
-const KIND_ORDER: Record<AttentionKind, number> = {
+/**
+ * Slots each kind is guaranteed before the higher-precedence kinds take the
+ * remainder. This is what stops a large overdue backlog from rendering the
+ * other categories invisible.
+ */
+export const KIND_RESERVE = 3;
+
+/** OVERDUE beats STUCK_IN_REVIEW beats UNOWNED_URGENT. */
+export const KIND_ORDER: Record<AttentionKind, number> = {
   OVERDUE: 0,
   STUCK_IN_REVIEW: 1,
   UNOWNED_URGENT: 2,
 };
 
+const KINDS = ["OVERDUE", "STUCK_IN_REVIEW", "UNOWNED_URGENT"] as const;
+
+/**
+ * Rank and truncate the attention list.
+ *
+ * 1. De-duplicate by task id, keeping the highest-precedence kind — a task can
+ *    qualify under several rules but must appear once.
+ * 2. Reserve up to KIND_RESERVE slots for each kind that has candidates, so
+ *    every live category is visible.
+ * 3. Fill the remaining slots in precedence order, oldest first.
+ * 4. Sort the result by precedence, then by age descending.
+ */
+export function rankAttention(
+  candidates: AttentionItem[],
+  cap: number = ATTENTION_CAP,
+): AttentionItem[] {
+  const byId = new Map<string, AttentionItem>();
+  for (const c of candidates) {
+    const existing = byId.get(c.id);
+    if (!existing || KIND_ORDER[c.kind] < KIND_ORDER[existing.kind]) {
+      byId.set(c.id, c);
+    }
+  }
+
+  // Per-kind queues, oldest first — the order slots are handed out in.
+  const queues = new Map<AttentionKind, AttentionItem[]>(
+    KINDS.map((kind) => [
+      kind,
+      [...byId.values()]
+        .filter((i) => i.kind === kind)
+        .sort((a, b) => b.ageDays - a.ageDays),
+    ]),
+  );
+
+  const picked: AttentionItem[] = [];
+  const taken = new Map<AttentionKind, number>(KINDS.map((k) => [k, 0]));
+
+  // Pass 1 — reservation, so no live kind can be crowded out.
+  for (const kind of KINDS) {
+    const queue = queues.get(kind)!;
+    const n = Math.min(KIND_RESERVE, queue.length, cap - picked.length);
+    picked.push(...queue.slice(0, n));
+    taken.set(kind, n);
+  }
+
+  // Pass 2 — remaining slots go to the higher-precedence kinds first.
+  for (const kind of KINDS) {
+    if (picked.length >= cap) break;
+    const queue = queues.get(kind)!;
+    const from = taken.get(kind)!;
+    picked.push(...queue.slice(from, from + (cap - picked.length)));
+  }
+
+  return picked.sort(
+    (a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.ageDays - a.ageDays,
+  );
+}
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `npx vitest run src/features/executive/attention.test.ts`
+Expected: PASS, 7/7.
+
+- [ ] **Step 5: Append the attention query**
+
+Add to `src/features/executive/queries.ts`, importing the pure module at the top:
+
+```ts
+import {
+  ATTENTION_CAP,
+  rankAttention,
+  type AttentionItem,
+  type AttentionKind,
+} from "./attention";
+```
+
+```ts
+// ─────────────────────────────────────────────────────────────────────────────
+// Needs attention
+// ─────────────────────────────────────────────────────────────────────────────
+
+const REVIEW_STUCK_DAYS = 5;
+
 /**
  * The ranked "needs your attention" list. THE ONLY row-level read in this
- * module — three narrow, individually-capped selects, merged and truncated to
- * ATTENTION_CAP.
- *
- * A task can qualify under more than one rule; it appears ONCE, under its
- * highest-ranked kind (overdue beats stuck-in-review beats unowned-urgent).
+ * module — three narrow, individually-capped selects, merged and then ranked
+ * by `rankAttention` (see ./attention for the de-dup and reservation rules).
  */
 export async function getAttentionItems(
   scope?: ExecutiveScope,
@@ -1445,6 +1644,7 @@ export async function getAttentionItems(
     title: true,
     dueDate: true,
     updatedAt: true,
+    createdAt: true,
     projectId: true,
     project: { select: { key: true } },
     assignee: { select: { name: true } },
@@ -1482,45 +1682,35 @@ export async function getAttentionItems(
   const days = (from: Date): number =>
     Math.max(0, Math.floor((now.getTime() - from.getTime()) / DAY_MS));
 
-  const seen = new Set<string>();
-  const items: AttentionItem[] = [];
-
-  const push = (
+  const toItems = (
     rows: typeof overdue,
     kind: AttentionKind,
     age: (row: (typeof overdue)[number]) => number,
-  ): void => {
-    for (const row of rows) {
-      if (seen.has(row.id)) continue;
-      seen.add(row.id);
-      items.push({
-        id: row.id,
-        taskKey: row.key,
-        projectId: row.projectId,
-        projectKey: row.project.key,
-        title: row.title,
-        kind,
-        ageDays: age(row),
-        assigneeName: row.assignee?.name ?? null,
-        canOpen: s.memberProjectIds.has(row.projectId),
-      });
-    }
-  };
+  ): AttentionItem[] =>
+    rows.map((row) => ({
+      id: row.id,
+      taskKey: row.key,
+      projectId: row.projectId,
+      projectKey: row.project.key,
+      title: row.title,
+      kind,
+      ageDays: age(row),
+      assigneeName: row.assignee?.name ?? null,
+      canOpen: s.memberProjectIds.has(row.projectId),
+    }));
 
-  // Order of these three calls IS the precedence — `seen` keeps the first win.
-  push(overdue, "OVERDUE", (r) => (r.dueDate ? days(r.dueDate) : 0));
-  push(stuck, "STUCK_IN_REVIEW", (r) => days(r.updatedAt));
-  push(unowned, "UNOWNED_URGENT", () => 0);
-
-  return items
-    .sort(
-      (a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.ageDays - a.ageDays,
-    )
-    .slice(0, ATTENTION_CAP);
+  // rankAttention de-duplicates by id keeping the highest-precedence kind, so
+  // the three lists can be concatenated in any order — but keep them in
+  // precedence order anyway, for readability.
+  return rankAttention([
+    ...toItems(overdue, "OVERDUE", (r) => (r.dueDate ? days(r.dueDate) : 0)),
+    ...toItems(stuck, "STUCK_IN_REVIEW", (r) => days(r.updatedAt)),
+    ...toItems(unowned, "UNOWNED_URGENT", (r) => days(r.createdAt)),
+  ]);
 }
 ```
 
-- [ ] **Step 2: Append the org workload query**
+- [ ] **Step 6: Append the org workload query**
 
 ```ts
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1587,20 +1777,26 @@ export async function getOrgWorkload(): Promise<OrgWorkloadEntry[]> {
 }
 ```
 
-- [ ] **Step 3: Verify it compiles and lints**
+- [ ] **Step 7: Verify it compiles, lints, and tests clean**
 
-Run: `npx tsc --noEmit && npm run lint`
-Expected: no errors.
+Run: `npx vitest run src/features/executive && npx tsc --noEmit && npm run lint`
+Expected: PASS, no errors, zero lint warnings.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/features/executive/queries.ts
+git add src/features/executive
 git commit -m "feat(executive): attention list and org-wide workload queries
 
 The attention list is the only row-level read in the module: three capped
-selects merged with precedence (overdue > stuck-in-review > unowned-urgent), a
-task appearing once under its highest-ranked kind."
+selects merged, then de-duplicated and ranked by a pure, table-tested
+rankAttention.
+
+Ranking reserves slots per kind before precedence takes the remainder. A strict
+precedence sort would let a large overdue backlog fill every slot and render
+stuck-in-review and unowned-urgent work invisible rather than merely
+lower-ranked — on a 'what needs your attention' screen, the worst failure it
+could have."
 ```
 
 ---
@@ -1614,7 +1810,7 @@ task appearing once under its highest-ranked kind."
 - Create: `src/features/executive/components/OrgWorkloadBars.tsx`
 
 **Interfaces:**
-- Consumes: `OrgThroughputWeek`, `ExecutiveProject`, `AttentionItem`, `OrgWorkloadEntry` (Tasks 5–7); `HEALTH_META` (Task 6).
+- Consumes: `OrgThroughputWeek`, `ExecutiveProject`, `OrgWorkloadEntry` from `../queries` (Tasks 5–7); `AttentionItem` and `AttentionKind` from `../attention` (Task 7); `HEALTH_META` from `../health` (Task 6). Note the two type-only imports that do NOT come from `queries.ts` — `attention.ts` and `health.ts` are Prisma-free precisely so components can import from them.
 - Produces: `OrgThroughputChart`, `ProjectHealthCard`, `AttentionList`, `OrgWorkloadBars` — consumed by Task 9's page.
 
 - [ ] **Step 1: Create the throughput chart**
@@ -1905,7 +2101,7 @@ import Link from "next/link";
 import { Lock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { AttentionItem, AttentionKind } from "../queries";
+import type { AttentionItem, AttentionKind } from "../attention";
 
 const KIND_META: Record<AttentionKind, { dotClass: string; label: (days: number) => string }> = {
   OVERDUE: {
@@ -1918,7 +2114,10 @@ const KIND_META: Record<AttentionKind, { dotClass: string; label: (days: number)
   },
   UNOWNED_URGENT: {
     dotClass: "bg-warning",
-    label: () => "Urgent, unassigned",
+    // ageDays is a real age-since-creation here, so it is worth showing: an
+    // urgent task nobody has owned for three weeks is a different problem from
+    // one filed this morning.
+    label: (days) => (days === 0 ? "Unassigned, urgent" : `Unassigned ${days}d`),
   },
 };
 
