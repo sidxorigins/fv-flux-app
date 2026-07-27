@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 
 import { auth } from "@/lib/auth";
+import { defaultLandingPath } from "@/lib/landing";
 import { Button } from "@/components/ui/button";
 import { LetterRain, ScrambledTitle } from "@/components/ui/raining-letters";
 
@@ -26,7 +27,7 @@ const HERO_PHRASES = [
 
 export default async function Home() {
   const session = await auth();
-  if (session?.user) redirect("/dashboard");
+  if (session?.user) redirect(defaultLandingPath(session.user.globalRole));
 
   return (
     <div className="relative flex h-svh min-h-[34rem] flex-col overflow-hidden">

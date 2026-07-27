@@ -46,7 +46,10 @@ export function LoginForm({ callbackUrl }: LoginFormProps) {
     defaultValues: { email: "", password: "" },
   });
 
-  const redirectTarget = isSafeRelativePath(callbackUrl) ? callbackUrl : "/dashboard";
+  // "/" resolves the role-aware default server-side (see lib/landing.ts) — the
+  // landing page redirects signed-in users before rendering, so there is no
+  // flash of marketing content. An explicit, safe callbackUrl still wins.
+  const redirectTarget = isSafeRelativePath(callbackUrl) ? callbackUrl : "/";
 
   const onSubmit = (values: LoginInput) => {
     setFormError(null);
