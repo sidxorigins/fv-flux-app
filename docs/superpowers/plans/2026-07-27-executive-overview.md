@@ -2059,6 +2059,7 @@ has no membership for render as locked non-links."
 `ThroughputSpark` takes `{ label, completed }[]`, so map the org series down for the strip. `DashboardEntrance` is reused deliberately — it is the app's one sanctioned entrance and is already session-gated and reduced-motion-aware.
 
 ```tsx
+import { redirect } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -2066,7 +2067,7 @@ import {
   ListTodo,
 } from "lucide-react";
 
-import { requireExecutive } from "@/lib/permissions";
+import { AuthorizationError, requireExecutive } from "@/lib/permissions";
 import { KpiCard } from "@/features/dashboard/components/KpiCard";
 import { ThroughputSpark } from "@/features/dashboard/components/ThroughputSpark";
 import { DashboardEntrance } from "@/features/dashboard/components/DashboardEntrance";
@@ -2113,7 +2114,18 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
  * entrance tween runs after paint and never gates data, layout, or clicks.
  */
 export default async function ExecutivePage() {
-  await requireExecutive();
+  // Same guard shape as admin/layout.tsx: requireExecutive() throws when the DB
+  // disagrees with a still-valid JWT (suspended or demoted since it was issued).
+  // The app has no error.tsx, so an uncaught throw would surface Next's generic
+  // error page instead of the redirect the rest of the app uses for this race.
+  try {
+    await requireExecutive();
+  } catch (err) {
+    if (err instanceof AuthorizationError) {
+      redirect(err.code === "UNAUTHENTICATED" ? "/login" : "/dashboard");
+    }
+    throw err;
+  }
 
   const scope = await getExecutiveScope();
   const [kpis, throughput, attention, projects, workload] = await Promise.all([
