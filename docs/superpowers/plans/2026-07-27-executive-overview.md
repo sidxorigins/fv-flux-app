@@ -1736,6 +1736,46 @@ import { cn } from "@/lib/utils";
 import { HEALTH_META } from "../health";
 import type { ExecutiveProject } from "../queries";
 
+const SPARK_WEEKS = 6;
+
+/**
+ * Six-week completion sparkline as CSS bars — no charting library, no client
+ * JS, no layout animation. `weeks` may be short or empty when a project has no
+ * completions in the window; it is left-padded to SPARK_WEEKS so every card's
+ * strip is the same width and the cards stay on one grid.
+ */
+function Sparkline({ weeks }: { weeks: number[] }) {
+  const padded = [
+    ...Array.from({ length: Math.max(0, SPARK_WEEKS - weeks.length) }, () => 0),
+    ...weeks.slice(-SPARK_WEEKS),
+  ];
+  const max = Math.max(1, ...padded);
+  const total = padded.reduce((sum, n) => sum + n, 0);
+
+  return (
+    <div
+      role="img"
+      aria-label={
+        total === 0
+          ? "No tasks completed in the last 6 weeks"
+          : `${total} tasks completed over the last 6 weeks`
+      }
+      className="flex h-6 items-end gap-1"
+    >
+      {padded.map((count, i) => (
+        <span
+          key={i}
+          className={cn(
+            "min-h-[2px] flex-1 rounded-sm",
+            count === 0 ? "bg-surface-raised" : "bg-success/60",
+          )}
+          style={{ height: `${(count / max) * 100}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 /**
  * One project, at a glance. Server component, zero JS.
  *
@@ -1806,6 +1846,8 @@ export function ProjectHealthCard({ project }: { project: ExecutiveProject }) {
         </div>
       </dl>
 
+      <Sparkline weeks={project.spark} />
+
       <div className="text-muted-foreground flex items-center justify-between text-[11px]">
         <span className="truncate">Lead: {project.leadName}</span>
         <span className="flex items-center gap-1">
@@ -1844,7 +1886,7 @@ export function ProjectHealthCard({ project }: { project: ExecutiveProject }) {
 }
 ```
 
-The `spark` field is intentionally not rendered here — the 6-week series is available on the type for a follow-up without another query, and a 6-point sparkline inside a card this dense reads as noise. Leave it unused rather than inventing a cramped chart.
+`project.spark` is rendered by the local `Sparkline` — CSS bars, not recharts, so the card stays a zero-JS Server Component. `getProjectHealth` returns `[]` for a project with no completions in the window, which the padding handles.
 
 - [ ] **Step 3: Create the attention list**
 
