@@ -9,9 +9,19 @@
 // filters an aggregate.
 //
 // EFFICIENCY: aggregates come from groupBy/count or narrow selects. The ONLY
-// row-level read is the attention list, which is capped. The page resolves the
-// scope ONCE and passes it to each query so Promise.all() doesn't re-authorise
-// six times; each query still resolves its own scope when called standalone.
+// row-level read is the attention list (added in a later task), which is
+// capped. The page resolves the scope ONCE and passes it to each query so
+// Promise.all() doesn't repeat the membership lookup six times; each query
+// still resolves its own scope when called standalone.
+//
+// AUTHORISATION: every exported query calls requireExecutive() UNCONDITIONALLY,
+// even when a `scope` is passed in. `scope` is data, never a capability token —
+// it is a plain structural interface, so trusting its mere presence would let
+// any object of that shape (a test helper, a future caching layer, a refactor)
+// read org-wide figures without ever having gone through requireExecutive().
+// This is cheap because requireUser() (which requireExecutive() calls) is
+// request-memoised via React cache() — see lib/permissions.ts — so repeating
+// the check in every query costs one DB lookup per request, not one per query.
 
 import { prisma } from "@/lib/db";
 import { requireExecutive } from "@/lib/permissions";
@@ -88,7 +98,12 @@ export interface ExecutiveKpis {
 export async function getExecutiveKpis(
   scope?: ExecutiveScope,
 ): Promise<ExecutiveKpis> {
-  if (!scope) await requireExecutive();
+  // UNCONDITIONAL: `scope` is data, never an authorisation token. It is a plain
+  // structural interface, so trusting its mere presence would let any object of
+  // that shape read org-wide figures. requireUser() is request-memoised (see
+  // lib/permissions.ts), so re-authorising in every query costs one DB lookup
+  // per request, not one per query.
+  await requireExecutive();
 
   const now = new Date();
   const thisWeekStart = startOfIsoWeek(now);
@@ -153,7 +168,8 @@ export interface OrgThroughputWeek {
 export async function getOrgThroughput(
   scope?: ExecutiveScope,
 ): Promise<OrgThroughputWeek[]> {
-  if (!scope) await requireExecutive();
+  // unconditional — see getExecutiveKpis
+  await requireExecutive();
 
   const WEEKS = 8;
   const thisWeekStart = startOfIsoWeek(new Date());
