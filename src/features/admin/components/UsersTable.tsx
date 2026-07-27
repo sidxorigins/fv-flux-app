@@ -330,6 +330,10 @@ function ChangeRoleDialog({
           </SelectContent>
         </Select>
 
+        <p className="text-xs text-muted-foreground">
+          Role changes take effect the next time the user signs in.
+        </p>
+
         <DialogFooter>
           <Button variant="outline" type="button" onClick={onDone} disabled={isPending}>
             Cancel
