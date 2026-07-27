@@ -32,6 +32,12 @@
 
 import { prisma } from "@/lib/db";
 import { requireExecutive } from "@/lib/permissions";
+import {
+  ATTENTION_CAP,
+  rankAttention,
+  type AttentionItem,
+  type AttentionKind,
+} from "./attention";
 import { projectHealth, type ProjectHealth } from "./health";
 import {
   DAY_MS,
@@ -382,37 +388,12 @@ export async function getProjectHealth(
 // Needs attention
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AttentionKind = "OVERDUE" | "STUCK_IN_REVIEW" | "UNOWNED_URGENT";
-
-export interface AttentionItem {
-  id: string;
-  taskKey: string;
-  projectId: string;
-  projectKey: string;
-  title: string;
-  kind: AttentionKind;
-  /** Days overdue, or days sitting in review — whichever the kind implies. */
-  ageDays: number;
-  assigneeName: string | null;
-  canOpen: boolean;
-}
-
-const ATTENTION_CAP = 15;
 const REVIEW_STUCK_DAYS = 5;
-
-const KIND_ORDER: Record<AttentionKind, number> = {
-  OVERDUE: 0,
-  STUCK_IN_REVIEW: 1,
-  UNOWNED_URGENT: 2,
-};
 
 /**
  * The ranked "needs your attention" list. THE ONLY row-level read in this
- * module — three narrow, individually-capped selects, merged and truncated to
- * ATTENTION_CAP.
- *
- * A task can qualify under more than one rule; it appears ONCE, under its
- * highest-ranked kind (overdue beats stuck-in-review beats unowned-urgent).
+ * module — three narrow, individually-capped selects, merged and then ranked
+ * by `rankAttention` (see ./attention for the de-dup and reservation rules).
  */
 export async function getAttentionItems(
   scope?: ExecutiveScope,
@@ -429,6 +410,7 @@ export async function getAttentionItems(
     title: true,
     dueDate: true,
     updatedAt: true,
+    createdAt: true,
     projectId: true,
     project: { select: { key: true } },
     assignee: { select: { name: true } },
@@ -466,41 +448,31 @@ export async function getAttentionItems(
   const days = (from: Date): number =>
     Math.max(0, Math.floor((now.getTime() - from.getTime()) / DAY_MS));
 
-  const seen = new Set<string>();
-  const items: AttentionItem[] = [];
-
-  const push = (
+  const toItems = (
     rows: typeof overdue,
     kind: AttentionKind,
     age: (row: (typeof overdue)[number]) => number,
-  ): void => {
-    for (const row of rows) {
-      if (seen.has(row.id)) continue;
-      seen.add(row.id);
-      items.push({
-        id: row.id,
-        taskKey: row.key,
-        projectId: row.projectId,
-        projectKey: row.project.key,
-        title: row.title,
-        kind,
-        ageDays: age(row),
-        assigneeName: row.assignee?.name ?? null,
-        canOpen: s.memberProjectIds.has(row.projectId),
-      });
-    }
-  };
+  ): AttentionItem[] =>
+    rows.map((row) => ({
+      id: row.id,
+      taskKey: row.key,
+      projectId: row.projectId,
+      projectKey: row.project.key,
+      title: row.title,
+      kind,
+      ageDays: age(row),
+      assigneeName: row.assignee?.name ?? null,
+      canOpen: s.memberProjectIds.has(row.projectId),
+    }));
 
-  // Order of these three calls IS the precedence — `seen` keeps the first win.
-  push(overdue, "OVERDUE", (r) => (r.dueDate ? days(r.dueDate) : 0));
-  push(stuck, "STUCK_IN_REVIEW", (r) => days(r.updatedAt));
-  push(unowned, "UNOWNED_URGENT", () => 0);
-
-  return items
-    .sort(
-      (a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.ageDays - a.ageDays,
-    )
-    .slice(0, ATTENTION_CAP);
+  // rankAttention de-duplicates by id keeping the highest-precedence kind, so
+  // the three lists can be concatenated in any order — but keep them in
+  // precedence order anyway, for readability.
+  return rankAttention([
+    ...toItems(overdue, "OVERDUE", (r) => (r.dueDate ? days(r.dueDate) : 0)),
+    ...toItems(stuck, "STUCK_IN_REVIEW", (r) => days(r.updatedAt)),
+    ...toItems(unowned, "UNOWNED_URGENT", (r) => days(r.createdAt)),
+  ]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
