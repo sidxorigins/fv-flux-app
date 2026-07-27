@@ -57,6 +57,9 @@ export async function Topbar({ children }: TopbarProps) {
     getUnreadNotificationCount(),
   ]);
   const isAdmin = session?.user?.globalRole === "ADMIN";
+  // /executive is server-guarded regardless (proxy + requireExecutive) — this
+  // only hides the link from users who couldn't use it anyway.
+  const showExecutive = isAdmin || session?.user?.globalRole === "EXECUTIVE";
   const userId = session?.user?.id;
   // /manager is server-guarded regardless (isManagerOfAnyTeam || admin) —
   // this only hides the link from users who couldn't use it anyway.
@@ -70,6 +73,7 @@ export async function Topbar({ children }: TopbarProps) {
       <div className="glass flex h-14 items-center justify-between gap-4 px-3 sm:px-4">
         <MobileNav
           isAdmin={isAdmin}
+          showExecutive={showExecutive}
           showManager={showManager}
           showTeam={showTeam}
           unreadCount={unreadCount}

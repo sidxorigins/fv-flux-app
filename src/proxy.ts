@@ -59,6 +59,15 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // Executive overview: EXECUTIVE or ADMIN only. Same treatment as /admin —
+  // authenticated but unauthorised users go to their dashboard, not to login.
+  // Cheap JWT check; the page re-checks via requireExecutive().
+  if (pathname === "/executive" || pathname.startsWith("/executive/")) {
+    if (token.globalRole !== "EXECUTIVE" && token.globalRole !== "ADMIN") {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+  }
+
   return NextResponse.next();
 }
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Building2,
   Compass,
   FolderKanban,
   Inbox,
@@ -31,34 +32,41 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { href: "/explore", label: "Explore", icon: Compass, tourId: "nav-explore" },
 ];
 
+const EXECUTIVE_NAV_ITEM: NavItem = { href: "/executive", label: "Overview", icon: Building2, tourId: "nav-executive" };
 const MANAGER_NAV_ITEM: NavItem = { href: "/manager", label: "Manager", icon: Users, tourId: "nav-manager" };
 const TEAM_NAV_ITEM: NavItem = { href: "/team", label: "Team", icon: UsersRound, tourId: "nav-team" };
 const ADMIN_NAV_ITEM: NavItem = { href: "/admin", label: "Admin", icon: Shield, tourId: "nav-admin" };
 
 /**
  * Primary navigation — the only client piece of the sidebar (active state
- * needs the pathname). The Admin link shows only for global Admins, the
- * Manager link shows only for a user who manages at least one team (or is
- * Admin), and the Team link shows only when `getVisibleTeams()` resolved at
- * least one team (Team Productivity Visibility #8) — all three routes are
- * server-protected regardless (`/admin` layout, `/manager` page guard,
- * `/team`'s own `getVisibleTeams`/`getTeamProductivity` gate); these flags
- * just hide links nobody else can use. The Inbox link carries an
- * unread-count badge. Micro-interactions are CSS transitions only.
+ * needs the pathname). The Overview link shows only for global Executives
+ * (or Admins) and leads the list — it's the primary destination for that
+ * role. The Admin link shows only for global Admins, the Manager link shows
+ * only for a user who manages at least one team (or is Admin), and the Team
+ * link shows only when `getVisibleTeams()` resolved at least one team (Team
+ * Productivity Visibility #8) — all four routes are server-protected
+ * regardless (`/executive` proxy guard + `requireExecutive()`, `/admin`
+ * layout, `/manager` page guard, `/team`'s own
+ * `getVisibleTeams`/`getTeamProductivity` gate); these flags just hide links
+ * nobody else can use. The Inbox link carries an unread-count badge.
+ * Micro-interactions are CSS transitions only.
  */
 export function NavLinks({
   isAdmin = false,
+  showExecutive = false,
   showManager = false,
   showTeam = false,
   unreadCount = 0,
 }: {
   isAdmin?: boolean;
+  showExecutive?: boolean;
   showManager?: boolean;
   showTeam?: boolean;
   unreadCount?: number;
 }) {
   const pathname = usePathname();
   const items = [
+    ...(showExecutive ? [EXECUTIVE_NAV_ITEM] : []),
     ...BASE_NAV_ITEMS,
     ...(showManager ? [MANAGER_NAV_ITEM] : []),
     ...(showTeam ? [TEAM_NAV_ITEM] : []),
