@@ -2380,12 +2380,19 @@ export default async function ExecutivePage() {
           data-tour="executive-kpis"
           className="grid grid-cols-2 gap-3 lg:grid-cols-4"
         >
+          {/*
+            NOT a delta. `openLastWeek` counts open tasks that predate this week,
+            which is a strict SUBSET of `open` — so the difference is always >= 0
+            and can only ever render neutral or alarm-red. An org that closed 50
+            tasks and opened 3 would show "+3 vs last week" in red. It is a count
+            of new work, so it is labelled as one.
+          */}
           <KpiCard
             label="Open work"
             value={kpis.open}
             icon={ListTodo}
             iconClass="text-info"
-            delta={{ value: kpis.open - kpis.openLastWeek, meaning: "up-bad" }}
+            caption={`${kpis.open - kpis.openLastWeek} opened this week`}
           />
           <KpiCard
             label="Completed this week"
@@ -2397,15 +2404,13 @@ export default async function ExecutivePage() {
               meaning: "up-good",
             }}
           />
+          {/* Same subset problem as Open work — a count, not a delta. */}
           <KpiCard
             label="Overdue"
             value={kpis.overdue}
             icon={AlertTriangle}
             iconClass="text-danger"
-            delta={{
-              value: kpis.overdue - kpis.overdueLastWeek,
-              meaning: "up-bad",
-            }}
+            caption={`${kpis.overdue - kpis.overdueLastWeek} newly overdue this week`}
           />
           <KpiCard
             label="In review"
