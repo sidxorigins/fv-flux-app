@@ -32,6 +32,14 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Glass panel. `min-w-0` is load-bearing, not decoration: descendants use
+ * `truncate` (white-space: nowrap), and without it their untruncated width
+ * feeds max-content into the grid track, rendering the panel wider than the
+ * viewport. `body` sets `overflow-x: clip`, so that overflow produces NO
+ * scrollbar — it silently clips content off-screen where it cannot be reached.
+ * Every grid in this page therefore also declares an explicit `grid-cols-1`.
+ */
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="glass flex min-w-0 flex-col gap-3 p-5">
@@ -137,14 +145,7 @@ export default async function ExecutivePage() {
         </div>
 
         {/* B. Attention + throughput */}
-        {/*
-          grid-cols-1 is explicit (not left to the implicit default) and both
-          items get min-w-0: without it, CSS grid's implicit single-column
-          track auto-sizes to the items' max-content width, and AttentionList's
-          `truncate` title forces `white-space: nowrap`, so its untruncated
-          text width leaks into that calculation — the panel silently clips
-          past the viewport at narrow widths with no scrollbar to reveal it.
-        */}
+        {/* grid-cols-1 and min-w-0 are explicit on purpose — see the Panel note above. */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="min-w-0 lg:col-span-2">
             <Panel title="Needs attention">
@@ -162,7 +163,8 @@ export default async function ExecutivePage() {
           {projects.length === 0 ? (
             <p className="text-muted-foreground text-sm">No projects yet.</p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            // grid-cols-1 is explicit on purpose — see the Panel note above.
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {projects.map((project) => (
                 <ProjectHealthCard key={project.id} project={project} />
               ))}

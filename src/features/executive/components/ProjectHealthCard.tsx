@@ -128,7 +128,12 @@ export function ProjectHealthCard({ project }: { project: ExecutiveProject }) {
     </>
   );
 
-  const shell = "glass flex flex-col gap-3 p-4";
+  // min-w-0 is load-bearing: the card is a grid item whose children use
+  // `truncate` (white-space: nowrap), so without it the untruncated text feeds
+  // max-content into the implicit grid column and the card renders wider than
+  // the viewport. `body` has `overflow-x: clip`, so that overflow does NOT
+  // produce a scrollbar — it silently clips content off-screen, unreachable.
+  const shell = "glass flex min-w-0 flex-col gap-3 p-4";
 
   if (!project.canOpen) {
     return (
