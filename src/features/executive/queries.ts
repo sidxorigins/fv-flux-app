@@ -10,18 +10,25 @@
 //
 // EFFICIENCY: aggregates come from groupBy/count or narrow selects. The ONLY
 // row-level read is the attention list (added in a later task), which is
-// capped. The page resolves the scope ONCE and passes it to each query so
-// Promise.all() doesn't repeat the membership lookup six times; each query
-// still resolves its own scope when called standalone.
+// capped. The page resolves the scope ONCE (getExecutiveScope) and passes it
+// only to the queries that actually read `memberProjectIds`, so Promise.all()
+// doesn't repeat the membership lookup for each of those; each such query
+// still resolves its own scope when called standalone. The purely org-wide
+// queries below take no scope parameter — see AUTHORISATION.
 //
-// AUTHORISATION: every exported query calls requireExecutive() UNCONDITIONALLY,
-// even when a `scope` is passed in. `scope` is data, never a capability token —
-// it is a plain structural interface, so trusting its mere presence would let
-// any object of that shape (a test helper, a future caching layer, a refactor)
-// read org-wide figures without ever having gone through requireExecutive().
-// This is cheap because requireUser() (which requireExecutive() calls) is
-// request-memoised via React cache() — see lib/permissions.ts — so repeating
-// the check in every query costs one DB lookup per request, not one per query.
+// AUTHORISATION: every exported query calls requireExecutive() UNCONDITIONALLY —
+// none of them accept a `scope` as a shortcut past it. `scope` is data, never a
+// capability token: it is a plain structural interface, so trusting its mere
+// presence would let any object of that shape (a test helper, a future caching
+// layer, a refactor) read org-wide figures without ever having gone through
+// requireExecutive(). The purely org-wide queries in THIS file (getExecutiveKpis,
+// getOrgThroughput) take no scope parameter at all — there is nothing in `scope`
+// they need. Later queries that genuinely read `scope.memberProjectIds` (to
+// decide which project cards/rows are clickable) keep the parameter — but still
+// call requireExecutive() unconditionally themselves. This is cheap either way
+// because requireUser() (which requireExecutive() calls) is request-memoised via
+// React cache() — see lib/permissions.ts — so repeating the check in every query
+// costs one DB lookup per request, not one per query.
 
 import { prisma } from "@/lib/db";
 import { requireExecutive } from "@/lib/permissions";
@@ -95,12 +102,10 @@ export interface ExecutiveKpis {
  * overdue. They are deliberately approximations — Flux does not snapshot task
  * state — and are used only to render a direction-of-travel delta chip.
  */
-export async function getExecutiveKpis(
-  scope?: ExecutiveScope,
-): Promise<ExecutiveKpis> {
-  // UNCONDITIONAL: `scope` is data, never an authorisation token. It is a plain
-  // structural interface, so trusting its mere presence would let any object of
-  // that shape read org-wide figures. requireUser() is request-memoised (see
+export async function getExecutiveKpis(): Promise<ExecutiveKpis> {
+  // UNCONDITIONAL: a scope is never an authorisation token. ExecutiveScope is a
+  // plain structural interface, so trusting one would let any object of that
+  // shape read org-wide figures. requireUser() is request-memoised (see
   // lib/permissions.ts), so re-authorising in every query costs one DB lookup
   // per request, not one per query.
   await requireExecutive();
@@ -165,11 +170,8 @@ export interface OrgThroughputWeek {
 }
 
 /** Two narrow reads over an 8-week window, bucketed in memory. */
-export async function getOrgThroughput(
-  scope?: ExecutiveScope,
-): Promise<OrgThroughputWeek[]> {
-  // unconditional — see getExecutiveKpis
-  await requireExecutive();
+export async function getOrgThroughput(): Promise<OrgThroughputWeek[]> {
+  await requireExecutive(); // unconditional — see getExecutiveKpis
 
   const WEEKS = 8;
   const thisWeekStart = startOfIsoWeek(new Date());
