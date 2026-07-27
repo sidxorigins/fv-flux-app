@@ -638,9 +638,9 @@ import it."
   - `interface ExecutiveScope { userId: string; memberProjectIds: Set<string> }`
   - `getExecutiveScope(): Promise<ExecutiveScope>`
   - `interface ExecutiveKpis { open: number; completedThisWeek: number; completedLastWeek: number; overdue: number; overdueLastWeek: number; inReview: number; openLastWeek: number }`
-  - `getExecutiveKpis(scope?: ExecutiveScope): Promise<ExecutiveKpis>`
+  - `getExecutiveKpis(): Promise<ExecutiveKpis>` — takes NO scope: it authorises unconditionally and every figure is org-wide, so there is nothing a scope could contribute.
   - `interface OrgThroughputWeek { label: string; created: number; completed: number }`
-  - `getOrgThroughput(scope?: ExecutiveScope): Promise<OrgThroughputWeek[]>`
+  - `getOrgThroughput(): Promise<OrgThroughputWeek[]>` — likewise takes no scope.
   - from `weeks.ts`: `startOfIsoWeek(d: Date): Date`, `weekLabel(d: Date): string`, `WEEK_MS: number`, `DAY_MS: number`
 
 - [ ] **Step 1: Write the failing test for the week helpers**
@@ -901,10 +901,8 @@ export interface ExecutiveKpis {
  * overdue. They are deliberately approximations — Flux does not snapshot task
  * state — and are used only to render a direction-of-travel delta chip.
  */
-export async function getExecutiveKpis(
-  scope?: ExecutiveScope,
-): Promise<ExecutiveKpis> {
-  // UNCONDITIONAL: `scope` is data, never an authorisation token. It is a plain
+export async function getExecutiveKpis(): Promise<ExecutiveKpis> {
+  // UNCONDITIONAL: a scope is never an authorisation token. It is a plain
   // structural interface, so trusting its mere presence would let any object of
   // that shape read org-wide figures. requireUser() is request-memoised (see
   // lib/permissions.ts), so re-authorising in every query costs one DB lookup
@@ -971,10 +969,8 @@ export interface OrgThroughputWeek {
 }
 
 /** Two narrow reads over an 8-week window, bucketed in memory. */
-export async function getOrgThroughput(
-  scope?: ExecutiveScope,
-): Promise<OrgThroughputWeek[]> {
-  await requireExecutive();
+export async function getOrgThroughput(): Promise<OrgThroughputWeek[]> {
+  await requireExecutive(); // unconditional — see getExecutiveKpis
 
   const WEEKS = 8;
   const thisWeekStart = startOfIsoWeek(new Date());
@@ -1391,7 +1387,7 @@ total regardless of project count."
   - `interface AttentionItem { id: string; taskKey: string; projectId: string; projectKey: string; title: string; kind: AttentionKind; ageDays: number; assigneeName: string | null; canOpen: boolean }`
   - `getAttentionItems(scope?: ExecutiveScope): Promise<AttentionItem[]>`
   - `interface OrgWorkloadEntry { userId: string; name: string; openTasks: number; overdueTasks: number }`
-  - `getOrgWorkload(scope?: ExecutiveScope): Promise<OrgWorkloadEntry[]>`
+  - `getOrgWorkload(): Promise<OrgWorkloadEntry[]>` — takes no scope; every figure is org-wide.
 
 - [ ] **Step 1: Append the attention query**
 
@@ -1544,9 +1540,7 @@ const WORKLOAD_LIMIT = 10;
  * Open task counts per assignee across EVERY project, busiest first, top 10.
  * Three queries: two groupBys plus one name lookup — never task rows.
  */
-export async function getOrgWorkload(
-  scope?: ExecutiveScope,
-): Promise<OrgWorkloadEntry[]> {
+export async function getOrgWorkload(): Promise<OrgWorkloadEntry[]> {
   await requireExecutive(); // unconditional — see getExecutiveKpis
 
   const now = new Date();
@@ -2142,12 +2136,14 @@ export default async function ExecutivePage() {
   }
 
   const scope = await getExecutiveScope();
+  // Only the two membership-aware queries take the scope — it decides which
+  // cards and rows are clickable. The rest are purely org-wide.
   const [kpis, throughput, attention, projects, workload] = await Promise.all([
-    getExecutiveKpis(scope),
-    getOrgThroughput(scope),
+    getExecutiveKpis(),
+    getOrgThroughput(),
     getAttentionItems(scope),
     getProjectHealth(scope),
-    getOrgWorkload(scope),
+    getOrgWorkload(),
   ]);
 
   const sparkData = throughput.map((w) => ({
