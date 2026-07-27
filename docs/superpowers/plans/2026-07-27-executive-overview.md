@@ -638,9 +638,9 @@ import it."
   - `interface ExecutiveScope { userId: string; memberProjectIds: Set<string> }`
   - `getExecutiveScope(): Promise<ExecutiveScope>`
   - `interface ExecutiveKpis { open: number; completedThisWeek: number; completedLastWeek: number; overdue: number; overdueLastWeek: number; inReview: number; openLastWeek: number }`
-  - `getExecutiveKpis(scope?: ExecutiveScope): Promise<ExecutiveKpis>`
+  - `getExecutiveKpis(): Promise<ExecutiveKpis>` — takes NO scope: it authorises unconditionally and every figure is org-wide, so there is nothing a scope could contribute.
   - `interface OrgThroughputWeek { label: string; created: number; completed: number }`
-  - `getOrgThroughput(scope?: ExecutiveScope): Promise<OrgThroughputWeek[]>`
+  - `getOrgThroughput(): Promise<OrgThroughputWeek[]>` — likewise takes no scope.
   - from `weeks.ts`: `startOfIsoWeek(d: Date): Date`, `weekLabel(d: Date): string`, `WEEK_MS: number`, `DAY_MS: number`
 
 - [ ] **Step 1: Write the failing test for the week helpers**
@@ -818,9 +818,16 @@ Create `src/features/executive/queries.ts`:
 // filters an aggregate.
 //
 // EFFICIENCY: aggregates come from groupBy/count or narrow selects. The ONLY
-// row-level read is the attention list, which is capped. The page resolves the
-// scope ONCE and passes it to each query so Promise.all() doesn't re-authorise
-// six times; each query still resolves its own scope when called standalone.
+// row-level read is the attention list (added in a later task), which is capped.
+// The page resolves the scope ONCE and passes it to each query so the membership
+// lookup isn't repeated; each query still resolves its own scope when called
+// standalone.
+//
+// AUTHORISATION: every exported query calls requireExecutive() UNCONDITIONALLY.
+// The `scope` parameter is data, never a capability token — ExecutiveScope is a
+// plain structural interface, so trusting its presence would let any object of
+// that shape read org-wide figures. requireUser() is request-memoised with
+// React cache(), so the repeated checks cost one DB lookup per request.
 
 import { prisma } from "@/lib/db";
 import { requireExecutive } from "@/lib/permissions";
@@ -894,10 +901,13 @@ export interface ExecutiveKpis {
  * overdue. They are deliberately approximations — Flux does not snapshot task
  * state — and are used only to render a direction-of-travel delta chip.
  */
-export async function getExecutiveKpis(
-  scope?: ExecutiveScope,
-): Promise<ExecutiveKpis> {
-  if (!scope) await requireExecutive();
+export async function getExecutiveKpis(): Promise<ExecutiveKpis> {
+  // UNCONDITIONAL: a scope is never an authorisation token. It is a plain
+  // structural interface, so trusting its mere presence would let any object of
+  // that shape read org-wide figures. requireUser() is request-memoised (see
+  // lib/permissions.ts), so re-authorising in every query costs one DB lookup
+  // per request, not one per query.
+  await requireExecutive();
 
   const now = new Date();
   const thisWeekStart = startOfIsoWeek(now);
@@ -959,10 +969,8 @@ export interface OrgThroughputWeek {
 }
 
 /** Two narrow reads over an 8-week window, bucketed in memory. */
-export async function getOrgThroughput(
-  scope?: ExecutiveScope,
-): Promise<OrgThroughputWeek[]> {
-  if (!scope) await requireExecutive();
+export async function getOrgThroughput(): Promise<OrgThroughputWeek[]> {
+  await requireExecutive(); // unconditional — see getExecutiveKpis
 
   const WEEKS = 8;
   const thisWeekStart = startOfIsoWeek(new Date());
@@ -1221,6 +1229,7 @@ const HEALTH_ORDER: Record<ProjectHealth, number> = {
 export async function getProjectHealth(
   scope?: ExecutiveScope,
 ): Promise<ExecutiveProject[]> {
+  await requireExecutive(); // unconditional — see getExecutiveKpis
   const s = scope ?? (await getExecutiveScope());
 
   const now = new Date();
@@ -1369,25 +1378,131 @@ total regardless of project count."
 ### Task 7: Attention list and org workload
 
 **Files:**
+- Create: `src/features/executive/attention.ts`
+- Create: `src/features/executive/attention.test.ts`
 - Modify: `src/features/executive/queries.ts` (append both queries)
 
 **Interfaces:**
 - Consumes: `ExecutiveScope`, `OPEN_STATUSES`, `DAY_MS` from Tasks 5–6.
 - Produces:
-  - `type AttentionKind = "OVERDUE" | "STUCK_IN_REVIEW" | "UNOWNED_URGENT"`
-  - `interface AttentionItem { id: string; taskKey: string; projectId: string; projectKey: string; title: string; kind: AttentionKind; ageDays: number; assigneeName: string | null; canOpen: boolean }`
-  - `getAttentionItems(scope?: ExecutiveScope): Promise<AttentionItem[]>`
-  - `interface OrgWorkloadEntry { userId: string; name: string; openTasks: number; overdueTasks: number }`
-  - `getOrgWorkload(scope?: ExecutiveScope): Promise<OrgWorkloadEntry[]>`
+  - from `attention.ts`: `type AttentionKind = "OVERDUE" | "STUCK_IN_REVIEW" | "UNOWNED_URGENT"`; `interface AttentionItem { id: string; taskKey: string; projectId: string; projectKey: string; title: string; kind: AttentionKind; ageDays: number; assigneeName: string | null; canOpen: boolean }`; `ATTENTION_CAP: number`; `rankAttention(candidates: AttentionItem[], cap?: number): AttentionItem[]`
+  - from `queries.ts`: `getAttentionItems(scope?: ExecutiveScope): Promise<AttentionItem[]>`; `interface OrgWorkloadEntry { userId: string; name: string; openTasks: number; overdueTasks: number }`; `getOrgWorkload(): Promise<OrgWorkloadEntry[]>` — takes no scope, every figure is org-wide.
 
-- [ ] **Step 1: Append the attention query**
+> **Why the ranking is a separate pure module.** A first cut ranked strictly by kind and sliced to 15, which meant a busy org's overdue backlog could fill every slot and render the other two categories *invisible* — not down-ranked, absent, with nothing saying they existed. On a screen whose entire job is "what needs your attention," silently hiding two of three problem categories is the worst failure it can have. The reservation pass below fixes that, and it lives in a pure, table-tested module because it is exactly the kind of logic that breaks silently.
 
-Add to `src/features/executive/queries.ts`:
+- [ ] **Step 1: Write the failing ranking tests**
+
+Create `src/features/executive/attention.test.ts`:
 
 ```ts
-// ─────────────────────────────────────────────────────────────────────────────
-// Needs attention
-// ─────────────────────────────────────────────────────────────────────────────
+import { describe, expect, it } from "vitest";
+
+import { rankAttention, type AttentionItem, type AttentionKind } from "./attention";
+
+function item(kind: AttentionKind, ageDays: number, id: string): AttentionItem {
+  return {
+    id,
+    taskKey: `OPS-${id}`,
+    projectId: "p1",
+    projectKey: "OPS",
+    title: `Task ${id}`,
+    kind,
+    ageDays,
+    assigneeName: null,
+    canOpen: true,
+  };
+}
+
+function many(kind: AttentionKind, n: number, prefix: string): AttentionItem[] {
+  return Array.from({ length: n }, (_, i) => item(kind, n - i, `${prefix}${i}`));
+}
+
+const countBy = (items: AttentionItem[], kind: AttentionKind): number =>
+  items.filter((i) => i.kind === kind).length;
+
+describe("rankAttention", () => {
+  it("returns everything when the total fits under the cap", () => {
+    const result = rankAttention(
+      [...many("OVERDUE", 2, "o"), ...many("STUCK_IN_REVIEW", 1, "s")],
+      15,
+    );
+    expect(result).toHaveLength(3);
+  });
+
+  it("never lets one kind crowd the others out entirely", () => {
+    // The defect this function exists to prevent: 20 overdue would otherwise
+    // fill all 15 slots and hide 8 real problems completely.
+    const result = rankAttention(
+      [
+        ...many("OVERDUE", 20, "o"),
+        ...many("STUCK_IN_REVIEW", 5, "s"),
+        ...many("UNOWNED_URGENT", 3, "u"),
+      ],
+      15,
+    );
+    expect(result).toHaveLength(15);
+    expect(countBy(result, "STUCK_IN_REVIEW")).toBeGreaterThan(0);
+    expect(countBy(result, "UNOWNED_URGENT")).toBeGreaterThan(0);
+    expect(countBy(result, "OVERDUE")).toBeGreaterThan(0);
+  });
+
+  it("gives leftover slots to the higher-precedence kinds", () => {
+    const result = rankAttention(
+      [
+        ...many("OVERDUE", 20, "o"),
+        ...many("STUCK_IN_REVIEW", 5, "s"),
+        ...many("UNOWNED_URGENT", 3, "u"),
+      ],
+      15,
+    );
+    // Each kind reserves up to 3, then OVERDUE takes the remaining 6.
+    expect(countBy(result, "OVERDUE")).toBe(9);
+    expect(countBy(result, "STUCK_IN_REVIEW")).toBe(3);
+    expect(countBy(result, "UNOWNED_URGENT")).toBe(3);
+  });
+
+  it("does not reserve slots for a kind with no items", () => {
+    const result = rankAttention(many("OVERDUE", 20, "o"), 15);
+    expect(result).toHaveLength(15);
+    expect(countBy(result, "OVERDUE")).toBe(15);
+  });
+
+  it("orders the result by kind precedence, then by age descending", () => {
+    const result = rankAttention(
+      [item("STUCK_IN_REVIEW", 9, "s1"), item("OVERDUE", 1, "o1"), item("OVERDUE", 7, "o2")],
+      15,
+    );
+    expect(result.map((i) => i.id)).toEqual(["o2", "o1", "s1"]);
+  });
+
+  it("drops duplicates by id, keeping the highest-precedence kind", () => {
+    const result = rankAttention(
+      [item("OVERDUE", 3, "dup"), item("UNOWNED_URGENT", 3, "dup")],
+      15,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]!.kind).toBe("OVERDUE");
+  });
+
+  it("returns an empty list for no candidates", () => {
+    expect(rankAttention([], 15)).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `npx vitest run src/features/executive/attention.test.ts`
+Expected: FAIL — cannot resolve `./attention`.
+
+- [ ] **Step 3: Create the pure ranking module**
+
+Create `src/features/executive/attention.ts`:
+
+```ts
+// The "needs attention" item shape and its ranking rule. Pure and
+// Prisma-free, so both the server query and a client component can import it,
+// and so the ranking is unit-testable without a database.
 
 export type AttentionKind = "OVERDUE" | "STUCK_IN_REVIEW" | "UNOWNED_URGENT";
 
@@ -1398,32 +1513,126 @@ export interface AttentionItem {
   projectKey: string;
   title: string;
   kind: AttentionKind;
-  /** Days overdue, or days sitting in review — whichever the kind implies. */
+  /**
+   * Days overdue (OVERDUE), days sitting in review (STUCK_IN_REVIEW), or days
+   * since creation (UNOWNED_URGENT). Always a real elapsed-day count — never a
+   * placeholder — so it is safe to both display and sort on.
+   */
   ageDays: number;
   assigneeName: string | null;
   canOpen: boolean;
 }
 
-const ATTENTION_CAP = 15;
-const REVIEW_STUCK_DAYS = 5;
+/** How many rows the list shows in total. */
+export const ATTENTION_CAP = 15;
 
-const KIND_ORDER: Record<AttentionKind, number> = {
+/**
+ * Slots each kind is guaranteed before the higher-precedence kinds take the
+ * remainder. This is what stops a large overdue backlog from rendering the
+ * other categories invisible.
+ */
+export const KIND_RESERVE = 3;
+
+/** OVERDUE beats STUCK_IN_REVIEW beats UNOWNED_URGENT. */
+export const KIND_ORDER: Record<AttentionKind, number> = {
   OVERDUE: 0,
   STUCK_IN_REVIEW: 1,
   UNOWNED_URGENT: 2,
 };
 
+const KINDS = ["OVERDUE", "STUCK_IN_REVIEW", "UNOWNED_URGENT"] as const;
+
+/**
+ * Rank and truncate the attention list.
+ *
+ * 1. De-duplicate by task id, keeping the highest-precedence kind — a task can
+ *    qualify under several rules but must appear once.
+ * 2. Reserve up to KIND_RESERVE slots for each kind that has candidates, so
+ *    every live category is visible.
+ * 3. Fill the remaining slots in precedence order, oldest first.
+ * 4. Sort the result by precedence, then by age descending.
+ */
+export function rankAttention(
+  candidates: AttentionItem[],
+  cap: number = ATTENTION_CAP,
+): AttentionItem[] {
+  const byId = new Map<string, AttentionItem>();
+  for (const c of candidates) {
+    const existing = byId.get(c.id);
+    if (!existing || KIND_ORDER[c.kind] < KIND_ORDER[existing.kind]) {
+      byId.set(c.id, c);
+    }
+  }
+
+  // Per-kind queues, oldest first — the order slots are handed out in.
+  const queues = new Map<AttentionKind, AttentionItem[]>(
+    KINDS.map((kind) => [
+      kind,
+      [...byId.values()]
+        .filter((i) => i.kind === kind)
+        .sort((a, b) => b.ageDays - a.ageDays),
+    ]),
+  );
+
+  const picked: AttentionItem[] = [];
+  const taken = new Map<AttentionKind, number>(KINDS.map((k) => [k, 0]));
+
+  // Pass 1 — reservation, so no live kind can be crowded out.
+  for (const kind of KINDS) {
+    const queue = queues.get(kind)!;
+    const n = Math.min(KIND_RESERVE, queue.length, cap - picked.length);
+    picked.push(...queue.slice(0, n));
+    taken.set(kind, n);
+  }
+
+  // Pass 2 — remaining slots go to the higher-precedence kinds first.
+  for (const kind of KINDS) {
+    if (picked.length >= cap) break;
+    const queue = queues.get(kind)!;
+    const from = taken.get(kind)!;
+    picked.push(...queue.slice(from, from + (cap - picked.length)));
+  }
+
+  return picked.sort(
+    (a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.ageDays - a.ageDays,
+  );
+}
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `npx vitest run src/features/executive/attention.test.ts`
+Expected: PASS, 7/7.
+
+- [ ] **Step 5: Append the attention query**
+
+Add to `src/features/executive/queries.ts`, importing the pure module at the top:
+
+```ts
+import {
+  ATTENTION_CAP,
+  rankAttention,
+  type AttentionItem,
+  type AttentionKind,
+} from "./attention";
+```
+
+```ts
+// ─────────────────────────────────────────────────────────────────────────────
+// Needs attention
+// ─────────────────────────────────────────────────────────────────────────────
+
+const REVIEW_STUCK_DAYS = 5;
+
 /**
  * The ranked "needs your attention" list. THE ONLY row-level read in this
- * module — three narrow, individually-capped selects, merged and truncated to
- * ATTENTION_CAP.
- *
- * A task can qualify under more than one rule; it appears ONCE, under its
- * highest-ranked kind (overdue beats stuck-in-review beats unowned-urgent).
+ * module — three narrow, individually-capped selects, merged and then ranked
+ * by `rankAttention` (see ./attention for the de-dup and reservation rules).
  */
 export async function getAttentionItems(
   scope?: ExecutiveScope,
 ): Promise<AttentionItem[]> {
+  await requireExecutive(); // unconditional — see getExecutiveKpis
   const s = scope ?? (await getExecutiveScope());
 
   const now = new Date();
@@ -1435,6 +1644,7 @@ export async function getAttentionItems(
     title: true,
     dueDate: true,
     updatedAt: true,
+    createdAt: true,
     projectId: true,
     project: { select: { key: true } },
     assignee: { select: { name: true } },
@@ -1472,45 +1682,35 @@ export async function getAttentionItems(
   const days = (from: Date): number =>
     Math.max(0, Math.floor((now.getTime() - from.getTime()) / DAY_MS));
 
-  const seen = new Set<string>();
-  const items: AttentionItem[] = [];
-
-  const push = (
+  const toItems = (
     rows: typeof overdue,
     kind: AttentionKind,
     age: (row: (typeof overdue)[number]) => number,
-  ): void => {
-    for (const row of rows) {
-      if (seen.has(row.id)) continue;
-      seen.add(row.id);
-      items.push({
-        id: row.id,
-        taskKey: row.key,
-        projectId: row.projectId,
-        projectKey: row.project.key,
-        title: row.title,
-        kind,
-        ageDays: age(row),
-        assigneeName: row.assignee?.name ?? null,
-        canOpen: s.memberProjectIds.has(row.projectId),
-      });
-    }
-  };
+  ): AttentionItem[] =>
+    rows.map((row) => ({
+      id: row.id,
+      taskKey: row.key,
+      projectId: row.projectId,
+      projectKey: row.project.key,
+      title: row.title,
+      kind,
+      ageDays: age(row),
+      assigneeName: row.assignee?.name ?? null,
+      canOpen: s.memberProjectIds.has(row.projectId),
+    }));
 
-  // Order of these three calls IS the precedence — `seen` keeps the first win.
-  push(overdue, "OVERDUE", (r) => (r.dueDate ? days(r.dueDate) : 0));
-  push(stuck, "STUCK_IN_REVIEW", (r) => days(r.updatedAt));
-  push(unowned, "UNOWNED_URGENT", () => 0);
-
-  return items
-    .sort(
-      (a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.ageDays - a.ageDays,
-    )
-    .slice(0, ATTENTION_CAP);
+  // rankAttention de-duplicates by id keeping the highest-precedence kind, so
+  // the three lists can be concatenated in any order — but keep them in
+  // precedence order anyway, for readability.
+  return rankAttention([
+    ...toItems(overdue, "OVERDUE", (r) => (r.dueDate ? days(r.dueDate) : 0)),
+    ...toItems(stuck, "STUCK_IN_REVIEW", (r) => days(r.updatedAt)),
+    ...toItems(unowned, "UNOWNED_URGENT", (r) => days(r.createdAt)),
+  ]);
 }
 ```
 
-- [ ] **Step 2: Append the org workload query**
+- [ ] **Step 6: Append the org workload query**
 
 ```ts
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1530,10 +1730,8 @@ const WORKLOAD_LIMIT = 10;
  * Open task counts per assignee across EVERY project, busiest first, top 10.
  * Three queries: two groupBys plus one name lookup — never task rows.
  */
-export async function getOrgWorkload(
-  scope?: ExecutiveScope,
-): Promise<OrgWorkloadEntry[]> {
-  if (!scope) await requireExecutive();
+export async function getOrgWorkload(): Promise<OrgWorkloadEntry[]> {
+  await requireExecutive(); // unconditional — see getExecutiveKpis
 
   const now = new Date();
 
@@ -1579,20 +1777,26 @@ export async function getOrgWorkload(
 }
 ```
 
-- [ ] **Step 3: Verify it compiles and lints**
+- [ ] **Step 7: Verify it compiles, lints, and tests clean**
 
-Run: `npx tsc --noEmit && npm run lint`
-Expected: no errors.
+Run: `npx vitest run src/features/executive && npx tsc --noEmit && npm run lint`
+Expected: PASS, no errors, zero lint warnings.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/features/executive/queries.ts
+git add src/features/executive
 git commit -m "feat(executive): attention list and org-wide workload queries
 
 The attention list is the only row-level read in the module: three capped
-selects merged with precedence (overdue > stuck-in-review > unowned-urgent), a
-task appearing once under its highest-ranked kind."
+selects merged, then de-duplicated and ranked by a pure, table-tested
+rankAttention.
+
+Ranking reserves slots per kind before precedence takes the remainder. A strict
+precedence sort would let a large overdue backlog fill every slot and render
+stuck-in-review and unowned-urgent work invisible rather than merely
+lower-ranked — on a 'what needs your attention' screen, the worst failure it
+could have."
 ```
 
 ---
@@ -1606,7 +1810,7 @@ task appearing once under its highest-ranked kind."
 - Create: `src/features/executive/components/OrgWorkloadBars.tsx`
 
 **Interfaces:**
-- Consumes: `OrgThroughputWeek`, `ExecutiveProject`, `AttentionItem`, `OrgWorkloadEntry` (Tasks 5–7); `HEALTH_META` (Task 6).
+- Consumes: `OrgThroughputWeek`, `ExecutiveProject`, `OrgWorkloadEntry` from `../queries` (Tasks 5–7); `AttentionItem` and `AttentionKind` from `../attention` (Task 7); `HEALTH_META` from `../health` (Task 6). Note the two type-only imports that do NOT come from `queries.ts` — `attention.ts` and `health.ts` are Prisma-free precisely so components can import from them.
 - Produces: `OrgThroughputChart`, `ProjectHealthCard`, `AttentionList`, `OrgWorkloadBars` — consumed by Task 9's page.
 
 - [ ] **Step 1: Create the throughput chart**
@@ -1736,6 +1940,46 @@ import { cn } from "@/lib/utils";
 import { HEALTH_META } from "../health";
 import type { ExecutiveProject } from "../queries";
 
+const SPARK_WEEKS = 6;
+
+/**
+ * Six-week completion sparkline as CSS bars — no charting library, no client
+ * JS, no layout animation. `weeks` may be short or empty when a project has no
+ * completions in the window; it is left-padded to SPARK_WEEKS so every card's
+ * strip is the same width and the cards stay on one grid.
+ */
+function Sparkline({ weeks }: { weeks: number[] }) {
+  const padded = [
+    ...Array.from({ length: Math.max(0, SPARK_WEEKS - weeks.length) }, () => 0),
+    ...weeks.slice(-SPARK_WEEKS),
+  ];
+  const max = Math.max(1, ...padded);
+  const total = padded.reduce((sum, n) => sum + n, 0);
+
+  return (
+    <div
+      role="img"
+      aria-label={
+        total === 0
+          ? "No tasks completed in the last 6 weeks"
+          : `${total} tasks completed over the last 6 weeks`
+      }
+      className="flex h-6 items-end gap-1"
+    >
+      {padded.map((count, i) => (
+        <span
+          key={i}
+          className={cn(
+            "min-h-[2px] flex-1 rounded-sm",
+            count === 0 ? "bg-surface-raised" : "bg-success/60",
+          )}
+          style={{ height: `${(count / max) * 100}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 /**
  * One project, at a glance. Server component, zero JS.
  *
@@ -1806,6 +2050,8 @@ export function ProjectHealthCard({ project }: { project: ExecutiveProject }) {
         </div>
       </dl>
 
+      <Sparkline weeks={project.spark} />
+
       <div className="text-muted-foreground flex items-center justify-between text-[11px]">
         <span className="truncate">Lead: {project.leadName}</span>
         <span className="flex items-center gap-1">
@@ -1816,7 +2062,12 @@ export function ProjectHealthCard({ project }: { project: ExecutiveProject }) {
     </>
   );
 
-  const shell = "glass flex flex-col gap-3 p-4";
+  // min-w-0 is load-bearing: the card is a grid item whose children use
+  // `truncate` (white-space: nowrap), so without it the untruncated text feeds
+  // max-content into the implicit grid column and the card renders wider than
+  // the viewport. `body` has `overflow-x: clip`, so that overflow does NOT
+  // produce a scrollbar — it silently clips content off-screen, unreachable.
+  const shell = "glass flex min-w-0 flex-col gap-3 p-4";
 
   if (!project.canOpen) {
     return (
@@ -1844,7 +2095,7 @@ export function ProjectHealthCard({ project }: { project: ExecutiveProject }) {
 }
 ```
 
-The `spark` field is intentionally not rendered here — the 6-week series is available on the type for a follow-up without another query, and a 6-point sparkline inside a card this dense reads as noise. Leave it unused rather than inventing a cramped chart.
+`project.spark` is rendered by the local `Sparkline` — CSS bars, not recharts, so the card stays a zero-JS Server Component. `getProjectHealth` returns `[]` for a project with no completions in the window, which the padding handles.
 
 - [ ] **Step 3: Create the attention list**
 
@@ -1855,7 +2106,7 @@ import Link from "next/link";
 import { Lock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { AttentionItem, AttentionKind } from "../queries";
+import type { AttentionItem, AttentionKind } from "../attention";
 
 const KIND_META: Record<AttentionKind, { dotClass: string; label: (days: number) => string }> = {
   OVERDUE: {
@@ -1868,7 +2119,10 @@ const KIND_META: Record<AttentionKind, { dotClass: string; label: (days: number)
   },
   UNOWNED_URGENT: {
     dotClass: "bg-warning",
-    label: () => "Urgent, unassigned",
+    // ageDays is a real age-since-creation here, so it is worth showing: an
+    // urgent task nobody has owned for three weeks is a different problem from
+    // one filed this morning.
+    label: (days) => (days === 0 ? "Unassigned, urgent" : `Unassigned ${days}d`),
   },
 };
 
@@ -2017,6 +2271,7 @@ has no membership for render as locked non-links."
 `ThroughputSpark` takes `{ label, completed }[]`, so map the org series down for the strip. `DashboardEntrance` is reused deliberately — it is the app's one sanctioned entrance and is already session-gated and reduced-motion-aware.
 
 ```tsx
+import { redirect } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -2024,7 +2279,7 @@ import {
   ListTodo,
 } from "lucide-react";
 
-import { requireExecutive } from "@/lib/permissions";
+import { AuthorizationError, requireExecutive } from "@/lib/permissions";
 import { KpiCard } from "@/features/dashboard/components/KpiCard";
 import { ThroughputSpark } from "@/features/dashboard/components/ThroughputSpark";
 import { DashboardEntrance } from "@/features/dashboard/components/DashboardEntrance";
@@ -2050,9 +2305,17 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Glass panel. `min-w-0` is load-bearing, not decoration: descendants use
+ * `truncate` (white-space: nowrap), and without it their untruncated width
+ * feeds max-content into the grid track, rendering the panel wider than the
+ * viewport. `body` sets `overflow-x: clip`, so that overflow produces NO
+ * scrollbar — it silently clips content off-screen where it cannot be reached.
+ * Every grid in this page therefore also declares an explicit `grid-cols-1`.
+ */
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="glass flex flex-col gap-3 p-5">
+    <section className="glass flex min-w-0 flex-col gap-3 p-5">
       <SectionHeading>{title}</SectionHeading>
       {children}
     </section>
@@ -2071,15 +2334,28 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
  * entrance tween runs after paint and never gates data, layout, or clicks.
  */
 export default async function ExecutivePage() {
-  await requireExecutive();
+  // Same guard shape as admin/layout.tsx: requireExecutive() throws when the DB
+  // disagrees with a still-valid JWT (suspended or demoted since it was issued).
+  // The app has no error.tsx, so an uncaught throw would surface Next's generic
+  // error page instead of the redirect the rest of the app uses for this race.
+  try {
+    await requireExecutive();
+  } catch (err) {
+    if (err instanceof AuthorizationError) {
+      redirect(err.code === "UNAUTHENTICATED" ? "/login" : "/dashboard");
+    }
+    throw err;
+  }
 
   const scope = await getExecutiveScope();
+  // Only the two membership-aware queries take the scope — it decides which
+  // cards and rows are clickable. The rest are purely org-wide.
   const [kpis, throughput, attention, projects, workload] = await Promise.all([
-    getExecutiveKpis(scope),
-    getOrgThroughput(scope),
+    getExecutiveKpis(),
+    getOrgThroughput(),
     getAttentionItems(scope),
     getProjectHealth(scope),
-    getOrgWorkload(scope),
+    getOrgWorkload(),
   ]);
 
   const sparkData = throughput.map((w) => ({
@@ -2100,13 +2376,23 @@ export default async function ExecutivePage() {
         </div>
 
         {/* A. Org KPIs */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div
+          data-tour="executive-kpis"
+          className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+        >
+          {/*
+            NOT a delta. `openLastWeek` counts open tasks that predate this week,
+            which is a strict SUBSET of `open` — so the difference is always >= 0
+            and can only ever render neutral or alarm-red. An org that closed 50
+            tasks and opened 3 would show "+3 vs last week" in red. It is a count
+            of new work, so it is labelled as one.
+          */}
           <KpiCard
             label="Open work"
             value={kpis.open}
             icon={ListTodo}
             iconClass="text-info"
-            delta={{ value: kpis.open - kpis.openLastWeek, meaning: "up-bad" }}
+            caption={`${kpis.open - kpis.openLastWeek} opened this week`}
           />
           <KpiCard
             label="Completed this week"
@@ -2118,15 +2404,13 @@ export default async function ExecutivePage() {
               meaning: "up-good",
             }}
           />
+          {/* Same subset problem as Open work — a count, not a delta. */}
           <KpiCard
             label="Overdue"
             value={kpis.overdue}
             icon={AlertTriangle}
             iconClass="text-danger"
-            delta={{
-              value: kpis.overdue - kpis.overdueLastWeek,
-              meaning: "up-bad",
-            }}
+            caption={`${kpis.overdue - kpis.overdueLastWeek} newly overdue this week`}
           />
           <KpiCard
             label="In review"
@@ -2142,8 +2426,8 @@ export default async function ExecutivePage() {
         </div>
 
         {/* B. Attention + throughput */}
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="min-w-0 lg:col-span-2">
             <Panel title="Needs attention">
               <AttentionList items={attention} />
             </Panel>
@@ -2159,7 +2443,8 @@ export default async function ExecutivePage() {
           {projects.length === 0 ? (
             <p className="text-muted-foreground text-sm">No projects yet.</p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {/* grid-cols-1 is explicit on purpose — see the Panel note above. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {projects.map((project) => (
                 <ProjectHealthCard key={project.id} project={project} />
               ))}
@@ -2266,12 +2551,21 @@ describe("grantAllProjectsViewer", () => {
     expect(result).toEqual({ ok: true });
     // p1 already has a row (possibly a HIGHER team-derived role) — untouched.
     expect(db.projectMembership.upsert).toHaveBeenCalledTimes(1);
-    expect(db.projectMembership.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { projectId_userId: { projectId: "p2", userId: USER_ID } },
-        update: { manualRole: "VIEWER" },
-      }),
-    );
+    // FULL equality, not objectContaining: the `create` branch is the whole
+    // point of this task. A partial match would still pass if a future edit
+    // dropped `manualRole` from `create`, producing exactly the sourceless row
+    // that recomputeMembership deletes weeks later. Mirrors addProjectMember's
+    // own test, which asserts the same shape the same way.
+    expect(db.projectMembership.upsert).toHaveBeenCalledWith({
+      where: { projectId_userId: { projectId: "p2", userId: USER_ID } },
+      update: { manualRole: "VIEWER" },
+      create: {
+        projectId: "p2",
+        userId: USER_ID,
+        projectRole: "VIEWER",
+        manualRole: "VIEWER",
+      },
+    });
     expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p2", USER_ID);
     expect(mockRecomputeMembership).not.toHaveBeenCalledWith(db, "p1", USER_ID);
   });
@@ -2517,11 +2811,44 @@ test.describe("executive overview", () => {
     await expect(page.getByRole("link", { name: "Overview" })).toBeVisible();
   });
 
-  test("KPI numbers are readable immediately, not animated in", async ({ page }) => {
+});
+
+test.describe("executive overview — server-rendered content", () => {
+  // JavaScript disabled: no hydration, no client fetch, and the GSAP entrance
+  // tween never runs. Whatever the browser shows is exactly what the server
+  // sent, so ordinary DOM assertions become a real test of the fast-first
+  // requirement — and they stay scoped to the element under test.
+  //
+  // This replaces an earlier attempt that sliced the raw HTML response by
+  // character offset. That approach could not bound its own search: the window
+  // needed to clear each card's inline SVG icon, but a window that wide reached
+  // past the last KPI card into ThroughputSpark's headline number, so a card
+  // rendering NO value could still have matched a digit belonging to a
+  // different component.
+  test.use({ javaScriptEnabled: false });
+
+  test("every KPI card renders its value from the server", async ({ page }) => {
     await page.goto("/executive");
-    // The value is server-rendered — assert it is non-empty on first paint.
-    const openCard = page.locator("div").filter({ hasText: /^Open work/ }).first();
-    await expect(openCard).toContainText(/\d/);
+
+    const kpis = page.locator('[data-tour="executive-kpis"]');
+    await expect(kpis).toBeVisible();
+
+    for (const label of [
+      "Open work",
+      "Completed this week",
+      "Overdue",
+      "In review",
+    ]) {
+      const card = kpis.locator(".glass").filter({ hasText: label });
+      await expect(card).toHaveCount(1);
+      await expect(card).toContainText(/\d/);
+    }
+  });
+
+  test("the project board renders from the server", async ({ page }) => {
+    await page.goto("/executive");
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+    await expect(page.getByText("Needs attention")).toBeVisible();
   });
 });
 ```
@@ -2530,12 +2857,15 @@ test.describe("executive overview", () => {
 
 Append to the same file.
 
-**Coverage limit, stated deliberately:** the e2e suite has exactly one stored session — the seeded admin (`e2e/auth.setup.ts` → `ADMIN_STORAGE_STATE`). Two cases from the spec's test list therefore cannot be asserted end-to-end and are **not** covered here:
+**Coverage limit, stated deliberately:** the e2e suite has exactly one stored session — the seeded admin (`e2e/auth.setup.ts` → `ADMIN_STORAGE_STATE`). **All three** of the design spec's e2e cases therefore cannot be asserted as written, and are **not** covered here:
 
-1. *"A plain USER is redirected away from `/executive`."* Covered by unit tests instead — `requireExecutive` rejects `USER` with `FORBIDDEN` (Task 2) — and the `proxy.ts` branch is a two-line mirror of the already-proven `/admin` branch.
-2. *"A project card without membership is not a link."* An admin passes `getExecutiveScope`'s bypass, so `canOpen` is `true` for every card in this session and the locked state never renders.
+1. *"An `EXECUTIVE` signs in and lands on `/executive`."* Substituted with an admin-reachability test — an admin passes the same guard, so the route, the queries and the render are exercised, but the `EXECUTIVE`-specific landing redirect is not. Backstopped by `defaultLandingPath`'s per-role unit tests (Task 4).
+2. *"Navigating to `/admin` redirects an `EXECUTIVE` to `/dashboard`."* Untestable with an admin session, which is *allowed* into `/admin`. Backstopped by `requireAdmin` rejecting `EXECUTIVE` in `permissions.test.ts` (Task 2), and the `proxy.ts` branch is a two-line mirror of the already-proven `/admin` branch.
+3. *"A project card without membership is not a link."* An admin passes `getExecutiveScope`'s bypass, so `canOpen` is `true` for every card in this session and the locked state never renders.
 
-Both need a second, non-admin storage state, which is out of scope for this plan. Do not silently skip them, and do not pretend they are covered.
+A plain-`USER` redirect away from `/executive` is likewise uncovered. Backstopped by `requireExecutive` rejecting `USER` with `FORBIDDEN` in `permissions.test.ts` (Task 2) — a different function from (2)'s `requireAdmin`, so it needs its own citation.
+
+All of these need a second, non-admin storage state, which is out of scope for this plan. Do not silently skip them, and do not pretend they are covered.
 
 What *is* verifiable without new fixtures is the anonymous gate:
 

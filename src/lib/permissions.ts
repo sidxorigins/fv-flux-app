@@ -15,6 +15,8 @@
 // requires status === ACTIVE. Suspending a user therefore takes effect on the very
 // next request, even if the user still holds a valid (un-expired) JWT.
 
+import { cache } from "react";
+
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import type { ProjectRole } from "@/generated/prisma/enums";
@@ -50,8 +52,13 @@ export class AuthorizationError extends Error {
  * Resolve the authenticated + ACTIVE user from the session, re-fetched from the DB.
  * Throws AuthorizationError("UNAUTHENTICATED") when there is no valid session/user,
  * or ("SUSPENDED") when the account is not ACTIVE.
+ *
+ * REQUEST-MEMOISED with React cache(): the session read + user lookup resolve at
+ * most once per request, no matter how many helpers call it. That is what makes
+ * unconditional authorisation in every query cheap — the DB is still the source
+ * of truth across requests, which is what the suspension guarantee actually needs.
  */
-export async function requireUser(): Promise<User> {
+export const requireUser = cache(async (): Promise<User> => {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) throw new AuthorizationError("UNAUTHENTICATED");
@@ -62,12 +69,33 @@ export async function requireUser(): Promise<User> {
   if (user.status !== "ACTIVE") throw new AuthorizationError("SUSPENDED");
 
   return user;
-}
+});
 
 /** Require an ACTIVE global Admin. Throws FORBIDDEN for non-admins. */
 export async function requireAdmin(): Promise<User> {
   const user = await requireUser();
   if (user.globalRole !== "ADMIN") throw new AuthorizationError("FORBIDDEN");
+  return user;
+}
+
+/**
+ * Require an ACTIVE global Admin OR Executive.
+ *
+ * EXECUTIVE is a READ-ONLY, ORG-WIDE VISIBILITY role and this is the ONLY place
+ * that capability is granted. It deliberately does not appear in requireAdmin,
+ * requireProjectRole, canManageTeam, or any other helper: every one of those
+ * tests `globalRole === "ADMIN"`, so an Executive falls through them as a plain
+ * user and keeps exactly the write access their ProjectMembership rows give
+ * them — no more.
+ *
+ * Admins pass too, so the executive view stays previewable and testable by the
+ * people who administer it.
+ */
+export async function requireExecutive(): Promise<User> {
+  const user = await requireUser();
+  if (user.globalRole !== "EXECUTIVE" && user.globalRole !== "ADMIN") {
+    throw new AuthorizationError("FORBIDDEN");
+  }
   return user;
 }
 

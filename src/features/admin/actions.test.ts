@@ -79,7 +79,9 @@ import {
   addTeamMember,
   assignTeamManager,
   assignTeamProject,
+  changeGlobalRole,
   createTeam,
+  grantAllProjectsViewer,
   removeProjectLead,
   removeProjectMember,
   removeTeamMember,
@@ -1184,6 +1186,136 @@ describe("setPrimaryLead", () => {
           targetType: "Project",
           targetId: PROJECT_ID,
           metadata: { projectId: PROJECT_ID, from: OLD_PRIMARY_ID, to: USER_ID },
+        }),
+      }),
+    );
+  });
+});
+
+describe("changeGlobalRole", () => {
+  it("refuses to demote the last active admin to EXECUTIVE", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "target-1",
+      globalRole: "ADMIN",
+      status: "ACTIVE",
+    });
+    db.user.count.mockResolvedValue(1);
+
+    const result = await changeGlobalRole({ userId: "target-1", role: "EXECUTIVE" });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "You can't demote the last active admin.",
+    });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("allows demoting an admin to EXECUTIVE when another active admin remains", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "target-1",
+      globalRole: "ADMIN",
+      status: "ACTIVE",
+    });
+    db.user.count.mockResolvedValue(2);
+    db.user.update.mockResolvedValue({});
+
+    const result = await changeGlobalRole({ userId: "target-1", role: "EXECUTIVE" });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "target-1" },
+      data: { globalRole: "EXECUTIVE" },
+    });
+  });
+
+  it("promotes a plain user to EXECUTIVE and audits the change", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "target-2",
+      globalRole: "USER",
+      status: "ACTIVE",
+    });
+    db.user.update.mockResolvedValue({});
+
+    const result = await changeGlobalRole({ userId: "target-2", role: "EXECUTIVE" });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "user.role_changed",
+          metadata: { from: "USER", to: "EXECUTIVE" },
+        }),
+      }),
+    );
+  });
+});
+
+describe("grantAllProjectsViewer", () => {
+  it("rejects invalid input before touching the DB", async () => {
+    const result = await grantAllProjectsViewer({ userId: "" });
+
+    expect(result).toEqual({ ok: false, error: "Invalid input." });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("reports a no-op when the user already has a row for every project", async () => {
+    db.user.findUnique.mockResolvedValue({ id: USER_ID });
+    db.project.findMany.mockResolvedValue([{ id: PROJECT_ID }]);
+    db.projectMembership.findMany.mockResolvedValue([{ projectId: PROJECT_ID }]);
+
+    const result = await grantAllProjectsViewer({ userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("upserts manualRole VIEWER and recomputes only the projects with no row", async () => {
+    db.user.findUnique.mockResolvedValue({ id: USER_ID });
+    db.project.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
+    db.projectMembership.findMany.mockResolvedValue([{ projectId: "p1" }]);
+    db.projectMembership.upsert.mockResolvedValue({});
+
+    const result = await grantAllProjectsViewer({ userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    // p1 already has a row (possibly a HIGHER team-derived role) — untouched.
+    expect(db.projectMembership.upsert).toHaveBeenCalledTimes(1);
+    // FULL equality, not objectContaining: the `create` branch is the whole
+    // point of this task. A partial match would still pass if a future edit
+    // dropped `manualRole` from `create`, producing exactly the sourceless row
+    // that recomputeMembership deletes weeks later. Mirrors addProjectMember's
+    // own test, which asserts the same shape the same way.
+    expect(db.projectMembership.upsert).toHaveBeenCalledWith({
+      where: { projectId_userId: { projectId: "p2", userId: USER_ID } },
+      update: { manualRole: "VIEWER" },
+      create: {
+        projectId: "p2",
+        userId: USER_ID,
+        projectRole: "VIEWER",
+        manualRole: "VIEWER",
+      },
+    });
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p2", USER_ID);
+    expect(mockRecomputeMembership).not.toHaveBeenCalledWith(db, "p1", USER_ID);
+  });
+
+  it("audits the bulk grant once with the created project ids", async () => {
+    db.user.findUnique.mockResolvedValue({ id: USER_ID });
+    db.project.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
+    db.projectMembership.findMany.mockResolvedValue([]);
+    db.projectMembership.upsert.mockResolvedValue({});
+
+    await grantAllProjectsViewer({ userId: USER_ID });
+
+    expect(db.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: ACTOR.id,
+          action: "membership.granted_all",
+          targetType: "User",
+          targetId: USER_ID,
+          metadata: { projectRole: "VIEWER", projectIds: ["p1", "p2"] },
         }),
       }),
     );

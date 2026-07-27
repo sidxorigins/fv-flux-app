@@ -16,6 +16,11 @@ export const GLOBAL_ROLE_META: Record<GlobalRole, ChipMeta> = {
     chipClass: "bg-primary/10 text-primary",
     dotClass: "bg-primary",
   },
+  EXECUTIVE: {
+    label: "Executive",
+    chipClass: "bg-info/10 text-info",
+    dotClass: "bg-info",
+  },
   USER: {
     label: "User",
     chipClass: "bg-muted-foreground/10 text-muted-foreground",
@@ -63,6 +68,7 @@ export const PROJECT_ROLE_META: Record<ProjectRole, ChipMeta> = {
 // value→label record; the trigger shows the label of the selected value).
 export const GLOBAL_ROLE_OPTIONS = [
   { value: "USER", label: "User" },
+  { value: "EXECUTIVE", label: "Executive" },
   { value: "ADMIN", label: "Admin" },
 ] as const satisfies ReadonlyArray<{ value: GlobalRole; label: string }>;
 
@@ -74,6 +80,7 @@ export const PROJECT_ROLE_OPTIONS = [
 
 export const GLOBAL_ROLE_LABELS: Record<GlobalRole, string> = {
   ADMIN: "Admin",
+  EXECUTIVE: "Executive",
   USER: "User",
 };
 

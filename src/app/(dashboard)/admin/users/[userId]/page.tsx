@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { getProjects, getUser } from "@/features/admin/queries";
+import { GrantAllProjectsButton } from "@/features/admin/components/GrantAllProjectsButton";
 import { MembershipEditor } from "@/features/admin/components/MembershipEditor";
 import {
   GlobalRoleBadge,
@@ -60,13 +61,16 @@ export default async function AdminUserDetailPage({ params }: UserDetailPageProp
 
       {/* Per-project access — the core "give role-based access" screen */}
       <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-0.5">
-          <h3 className="text-base font-semibold text-foreground">Project access</h3>
-          <p className="text-sm text-muted-foreground">
-            Grant this user access to a project and set their role. Roles: Manager
-            (manage the project &amp; members), Member (create/edit tasks), Viewer
-            (read-only).
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <h3 className="text-base font-semibold text-foreground">Project access</h3>
+            <p className="text-sm text-muted-foreground">
+              Grant this user access to a project and set their role. Roles: Manager
+              (manage the project &amp; members), Member (create/edit tasks), Viewer
+              (read-only).
+            </p>
+          </div>
+          <GrantAllProjectsButton userId={user.id} userName={user.name} />
         </div>
         <MembershipEditor
           userId={user.id}

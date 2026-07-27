@@ -8,7 +8,7 @@ import { z } from "zod";
 import { emailSchema, usernameSchema } from "@/features/auth/schemas";
 
 // ── Enum schemas (mirror the Prisma enums) ──────────────────────────────────
-export const globalRoleSchema = z.enum(["ADMIN", "USER"]);
+export const globalRoleSchema = z.enum(["ADMIN", "EXECUTIVE", "USER"]);
 export const projectRoleSchema = z.enum(["MANAGER", "MEMBER", "VIEWER"]);
 
 /**
@@ -135,6 +135,11 @@ export const teamProjectRoleSchema = z.object({
 export const teamProjectRemoveSchema = z.object({
   teamId: z.string().min(1, "Missing team id"),
   projectId: z.string().min(1, "Missing project id"),
+});
+
+/** Bulk VIEWER grant across every project the user isn't already in. */
+export const grantAllProjectsViewerSchema = z.object({
+  userId: z.string().min(1),
 });
 
 // ── Project leads (Phase B, Task B3) ─────────────────────────────────────────

@@ -14,6 +14,9 @@ export async function Sidebar() {
   const session = await auth();
   const userId = session?.user?.id;
   const isAdmin = session?.user?.globalRole === "ADMIN";
+  // /executive is server-guarded regardless (proxy + requireExecutive) — this
+  // only hides the link from users who couldn't use it anyway.
+  const showExecutive = isAdmin || session?.user?.globalRole === "EXECUTIVE";
   const [unreadCount, managesTeam, visibleTeams] = await Promise.all([
     getUnreadNotificationCount(),
     userId ? isManagerOfAnyTeam(userId) : Promise.resolve(false),
@@ -40,6 +43,7 @@ export async function Sidebar() {
         </div>
         <NavLinks
           isAdmin={isAdmin}
+          showExecutive={showExecutive}
           showManager={showManager}
           showTeam={showTeam}
           unreadCount={unreadCount}
