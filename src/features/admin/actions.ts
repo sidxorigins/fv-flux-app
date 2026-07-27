@@ -34,6 +34,7 @@ import {
   changeGlobalRoleSchema,
   createTeamSchema,
   createUserSchema,
+  grantAllProjectsViewerSchema,
   inviteIdSchema,
   membershipSchema,
   projectLeadSchema,
@@ -687,6 +688,80 @@ export async function removeProjectMember(input: unknown): Promise<ActionResult>
     });
 
     revalidateMembership(projectId, userId);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err) };
+  }
+}
+
+/**
+ * Grant a user VIEWER access to EVERY project they have no membership row for.
+ *
+ * A convenience wrapper over the ordinary membership model, not a new
+ * permission concept: it writes plain `manualRole = VIEWER` rows, revocable
+ * one-by-one through the normal editor.
+ *
+ * NON-DESTRUCTIVE BY CONSTRUCTION: projects where a ProjectMembership row
+ * already exists are skipped entirely, so a higher role — whether manual or
+ * derived from a team or a lead assignment — is never touched, let alone
+ * downgraded. Re-running the action is a no-op.
+ *
+ * Intended for an EXECUTIVE whose Overview lists every project but who can only
+ * open the ones they hold a membership for.
+ */
+export async function grantAllProjectsViewer(input: unknown): Promise<ActionResult> {
+  try {
+    const parsed = grantAllProjectsViewerSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, error: "Invalid input." };
+    const { userId } = parsed.data;
+
+    const admin = await requireAdmin();
+
+    const target = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!target) return { ok: false, error: "User not found." };
+
+    const [projects, existing] = await Promise.all([
+      prisma.project.findMany({ select: { id: true } }),
+      prisma.projectMembership.findMany({
+        where: { userId },
+        select: { projectId: true },
+      }),
+    ]);
+
+    const held = new Set(existing.map((m) => m.projectId));
+    const missing = projects.filter((p) => !held.has(p.id)).map((p) => p.id);
+    if (missing.length === 0) return { ok: true }; // already everywhere — no-op
+
+    await prisma.$transaction(async (tx) => {
+      for (const projectId of missing) {
+        await tx.projectMembership.upsert({
+          where: { projectId_userId: { projectId, userId } },
+          update: { manualRole: "VIEWER" },
+          create: {
+            projectId,
+            userId,
+            projectRole: "VIEWER",
+            manualRole: "VIEWER",
+          },
+        });
+        // Resolve the EFFECTIVE role from every source (manual + team + lead).
+        await recomputeMembership(tx, projectId, userId);
+      }
+      await tx.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: "membership.granted_all",
+          targetType: "User",
+          targetId: userId,
+          metadata: { projectRole: "VIEWER", projectIds: missing },
+        },
+      });
+    });
+
+    for (const projectId of missing) revalidateMembership(projectId, userId);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: friendlyAuthError(err) };

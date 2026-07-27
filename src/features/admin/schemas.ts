@@ -137,6 +137,11 @@ export const teamProjectRemoveSchema = z.object({
   projectId: z.string().min(1, "Missing project id"),
 });
 
+/** Bulk VIEWER grant across every project the user isn't already in. */
+export const grantAllProjectsViewerSchema = z.object({
+  userId: z.string().min(1),
+});
+
 // ── Project leads (Phase B, Task B3) ─────────────────────────────────────────
 export const projectLeadSchema = z.object({
   projectId: z.string().min(1, "Missing project id"),

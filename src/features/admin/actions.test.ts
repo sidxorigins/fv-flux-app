@@ -81,6 +81,7 @@ import {
   assignTeamProject,
   changeGlobalRole,
   createTeam,
+  grantAllProjectsViewer,
   removeProjectLead,
   removeProjectMember,
   removeTeamMember,
@@ -1243,6 +1244,69 @@ describe("changeGlobalRole", () => {
         data: expect.objectContaining({
           action: "user.role_changed",
           metadata: { from: "USER", to: "EXECUTIVE" },
+        }),
+      }),
+    );
+  });
+});
+
+describe("grantAllProjectsViewer", () => {
+  it("rejects invalid input before touching the DB", async () => {
+    const result = await grantAllProjectsViewer({ userId: "" });
+
+    expect(result).toEqual({ ok: false, error: "Invalid input." });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("reports a no-op when the user already has a row for every project", async () => {
+    db.user.findUnique.mockResolvedValue({ id: USER_ID });
+    db.project.findMany.mockResolvedValue([{ id: PROJECT_ID }]);
+    db.projectMembership.findMany.mockResolvedValue([{ projectId: PROJECT_ID }]);
+
+    const result = await grantAllProjectsViewer({ userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("upserts manualRole VIEWER and recomputes only the projects with no row", async () => {
+    db.user.findUnique.mockResolvedValue({ id: USER_ID });
+    db.project.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
+    db.projectMembership.findMany.mockResolvedValue([{ projectId: "p1" }]);
+    db.projectMembership.upsert.mockResolvedValue({});
+
+    const result = await grantAllProjectsViewer({ userId: USER_ID });
+
+    expect(result).toEqual({ ok: true });
+    // p1 already has a row (possibly a HIGHER team-derived role) — untouched.
+    expect(db.projectMembership.upsert).toHaveBeenCalledTimes(1);
+    expect(db.projectMembership.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectId_userId: { projectId: "p2", userId: USER_ID } },
+        update: { manualRole: "VIEWER" },
+      }),
+    );
+    expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p2", USER_ID);
+    expect(mockRecomputeMembership).not.toHaveBeenCalledWith(db, "p1", USER_ID);
+  });
+
+  it("audits the bulk grant once with the created project ids", async () => {
+    db.user.findUnique.mockResolvedValue({ id: USER_ID });
+    db.project.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
+    db.projectMembership.findMany.mockResolvedValue([]);
+    db.projectMembership.upsert.mockResolvedValue({});
+
+    await grantAllProjectsViewer({ userId: USER_ID });
+
+    expect(db.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: ACTOR.id,
+          action: "membership.granted_all",
+          targetType: "User",
+          targetId: USER_ID,
+          metadata: { projectRole: "VIEWER", projectIds: ["p1", "p2"] },
         }),
       }),
     );
