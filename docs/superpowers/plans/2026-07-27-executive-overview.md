@@ -2376,7 +2376,10 @@ export default async function ExecutivePage() {
         </div>
 
         {/* A. Org KPIs */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div
+          data-tour="executive-kpis"
+          className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+        >
           <KpiCard
             label="Open work"
             value={kpis.open}
@@ -2803,23 +2806,44 @@ test.describe("executive overview", () => {
     await expect(page.getByRole("link", { name: "Overview" })).toBeVisible();
   });
 
-  test("KPI values are server-rendered, not filled in after hydration", async ({
-    page,
-  }) => {
-    // Assert against the RAW HTML response, not the hydrated DOM. Checking the
-    // DOM would prove nothing about the fast-first requirement: Playwright's
-    // visibility checks ignore opacity, so a value faded in by the entrance
-    // tween — or fetched client-side — would satisfy them just as well. The
-    // response body can only contain these numbers if the server produced them.
-    const response = await page.goto("/executive");
-    const html = await response!.text();
+});
 
-    expect(html).toContain("Open work");
-    // Every KPI label is followed by its value in the same card markup.
-    for (const label of ["Open work", "Completed this week", "Overdue", "In review"]) {
-      const after = html.slice(html.indexOf(label), html.indexOf(label) + 400);
-      expect(after).toMatch(/>\s*\d+\s*</);
+test.describe("executive overview — server-rendered content", () => {
+  // JavaScript disabled: no hydration, no client fetch, and the GSAP entrance
+  // tween never runs. Whatever the browser shows is exactly what the server
+  // sent, so ordinary DOM assertions become a real test of the fast-first
+  // requirement — and they stay scoped to the element under test.
+  //
+  // This replaces an earlier attempt that sliced the raw HTML response by
+  // character offset. That approach could not bound its own search: the window
+  // needed to clear each card's inline SVG icon, but a window that wide reached
+  // past the last KPI card into ThroughputSpark's headline number, so a card
+  // rendering NO value could still have matched a digit belonging to a
+  // different component.
+  test.use({ javaScriptEnabled: false });
+
+  test("every KPI card renders its value from the server", async ({ page }) => {
+    await page.goto("/executive");
+
+    const kpis = page.locator('[data-tour="executive-kpis"]');
+    await expect(kpis).toBeVisible();
+
+    for (const label of [
+      "Open work",
+      "Completed this week",
+      "Overdue",
+      "In review",
+    ]) {
+      const card = kpis.locator(".glass").filter({ hasText: label });
+      await expect(card).toHaveCount(1);
+      await expect(card).toContainText(/\d/);
     }
+  });
+
+  test("the project board renders from the server", async ({ page }) => {
+    await page.goto("/executive");
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+    await expect(page.getByText("Needs attention")).toBeVisible();
   });
 });
 ```
@@ -2834,7 +2858,7 @@ Append to the same file.
 2. *"Navigating to `/admin` redirects an `EXECUTIVE` to `/dashboard`."* Untestable with an admin session, which is *allowed* into `/admin`. Backstopped by `requireAdmin` rejecting `EXECUTIVE` in `permissions.test.ts` (Task 2), and the `proxy.ts` branch is a two-line mirror of the already-proven `/admin` branch.
 3. *"A project card without membership is not a link."* An admin passes `getExecutiveScope`'s bypass, so `canOpen` is `true` for every card in this session and the locked state never renders.
 
-A plain-`USER` redirect away from `/executive` is likewise uncovered, for the same reason as (2).
+A plain-`USER` redirect away from `/executive` is likewise uncovered. Backstopped by `requireExecutive` rejecting `USER` with `FORBIDDEN` in `permissions.test.ts` (Task 2) — a different function from (2)'s `requireAdmin`, so it needs its own citation.
 
 All of these need a second, non-admin storage state, which is out of scope for this plan. Do not silently skip them, and do not pretend they are covered.
 
