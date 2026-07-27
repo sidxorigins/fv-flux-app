@@ -27,6 +27,7 @@ import {
   isManagerOfAnyTeam,
   managedTeamIds,
   requireAdmin,
+  requireExecutive,
   requireProjectRole,
   requireTeamManage,
   requireUser,
@@ -338,5 +339,85 @@ describe("canManageProjectLeads", () => {
   it("is false for a regular USER", () => {
     const user = makeUser({ globalRole: "USER" });
     expect(canManageProjectLeads(user)).toBe(false);
+  });
+});
+
+describe("requireExecutive", () => {
+  it("resolves an ACTIVE executive", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } });
+    mockFindUser.mockResolvedValue(makeUser({ globalRole: "EXECUTIVE" }));
+
+    const user = await requireExecutive();
+
+    expect(user.globalRole).toBe("EXECUTIVE");
+  });
+
+  it("resolves an ACTIVE admin (admins can preview the executive view)", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } });
+    mockFindUser.mockResolvedValue(makeUser({ globalRole: "ADMIN" }));
+
+    const user = await requireExecutive();
+
+    expect(user.globalRole).toBe("ADMIN");
+  });
+
+  it("rejects a plain USER with FORBIDDEN", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } });
+    mockFindUser.mockResolvedValue(makeUser({ globalRole: "USER" }));
+
+    await expect(requireExecutive()).rejects.toMatchObject({
+      name: "AuthorizationError",
+      code: "FORBIDDEN",
+    });
+  });
+
+  it("rejects a SUSPENDED executive with SUSPENDED", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } });
+    mockFindUser.mockResolvedValue(
+      makeUser({ globalRole: "EXECUTIVE", status: "SUSPENDED" }),
+    );
+
+    await expect(requireExecutive()).rejects.toMatchObject({
+      name: "AuthorizationError",
+      code: "SUSPENDED",
+    });
+  });
+
+  it("rejects an anonymous caller with UNAUTHENTICATED", async () => {
+    mockAuth.mockResolvedValue(null);
+
+    await expect(requireExecutive()).rejects.toMatchObject({
+      name: "AuthorizationError",
+      code: "UNAUTHENTICATED",
+    });
+  });
+});
+
+describe("EXECUTIVE has no elevated write access", () => {
+  it("is refused by requireAdmin", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } });
+    mockFindUser.mockResolvedValue(makeUser({ globalRole: "EXECUTIVE" }));
+
+    await expect(requireAdmin()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("is refused by requireProjectRole without a membership", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } });
+    mockFindUser.mockResolvedValue(makeUser({ globalRole: "EXECUTIVE" }));
+    mockFindMembership.mockResolvedValue(null);
+
+    await expect(requireProjectRole("project-1", "VIEWER")).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  });
+
+  it("gets exactly its membership role, with no admin bypass", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-1" } });
+    mockFindUser.mockResolvedValue(makeUser({ globalRole: "EXECUTIVE" }));
+    mockFindMembership.mockResolvedValue({ projectRole: "VIEWER" });
+
+    const { role } = await requireProjectRole("project-1", "VIEWER");
+
+    expect(role).toBe("VIEWER");
   });
 });

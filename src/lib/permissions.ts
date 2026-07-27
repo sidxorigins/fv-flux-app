@@ -71,6 +71,27 @@ export async function requireAdmin(): Promise<User> {
   return user;
 }
 
+/**
+ * Require an ACTIVE global Admin OR Executive.
+ *
+ * EXECUTIVE is a READ-ONLY, ORG-WIDE VISIBILITY role and this is the ONLY place
+ * that capability is granted. It deliberately does not appear in requireAdmin,
+ * requireProjectRole, canManageTeam, or any other helper: every one of those
+ * tests `globalRole === "ADMIN"`, so an Executive falls through them as a plain
+ * user and keeps exactly the write access their ProjectMembership rows give
+ * them — no more.
+ *
+ * Admins pass too, so the executive view stays previewable and testable by the
+ * people who administer it.
+ */
+export async function requireExecutive(): Promise<User> {
+  const user = await requireUser();
+  if (user.globalRole !== "EXECUTIVE" && user.globalRole !== "ADMIN") {
+    throw new AuthorizationError("FORBIDDEN");
+  }
+  return user;
+}
+
 /** The user's role in a project, or null if they have no membership there. */
 export async function getProjectRole(
   userId: string,
