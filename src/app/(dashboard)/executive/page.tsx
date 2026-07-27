@@ -103,7 +103,10 @@ export default async function ExecutivePage() {
         </div>
 
         {/* A. Org KPIs */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div
+          data-tour="executive-kpis"
+          className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+        >
           <KpiCard
             label="Open work"
             value={kpis.open}
