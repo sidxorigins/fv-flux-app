@@ -32,7 +32,9 @@
 
 import { prisma } from "@/lib/db";
 import { requireExecutive } from "@/lib/permissions";
+import { projectHealth, type ProjectHealth } from "./health";
 import {
+  DAY_MS,
   WEEK_MS,
   splitCompletionsByWeek,
   startOfIsoWeek,
@@ -210,4 +212,168 @@ export async function getOrgThroughput(): Promise<OrgThroughputWeek[]> {
     created: created[i]!,
     completed: completed[i]!.size,
   }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Project health board
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ExecutiveProject {
+  id: string;
+  key: string;
+  name: string;
+  leadName: string;
+  done: number;
+  total: number;
+  open: number;
+  inReview: number;
+  overdue: number;
+  unassignedUrgent: number;
+  activity7d: number;
+  activity14d: number;
+  /** Completions per week over the last 6 weeks — the card sparkline. */
+  spark: number[];
+  health: ProjectHealth;
+  /** False → render the card as a locked, non-navigable tile. */
+  canOpen: boolean;
+}
+
+const HEALTH_ORDER: Record<ProjectHealth, number> = {
+  STALLED: 0,
+  AT_RISK: 1,
+  ON_TRACK: 2,
+};
+
+/**
+ * Every project with its card figures, worst health first.
+ *
+ * Six queries TOTAL regardless of project count — never N per project. Each
+ * grouped read is keyed by projectId and zipped in memory.
+ */
+export async function getProjectHealth(
+  scope?: ExecutiveScope,
+): Promise<ExecutiveProject[]> {
+  await requireExecutive(); // unconditional — see getExecutiveKpis
+  const s = scope ?? (await getExecutiveScope());
+
+  const now = new Date();
+  const since7d = new Date(now.getTime() - 7 * DAY_MS);
+  const since14d = new Date(now.getTime() - 14 * DAY_MS);
+  const SPARK_WEEKS = 6;
+  const thisWeekStart = startOfIsoWeek(now);
+  const sparkStart = new Date(
+    thisWeekStart.getTime() - (SPARK_WEEKS - 1) * WEEK_MS,
+  );
+
+  const projects = await prisma.project.findMany({
+    select: { id: true, key: true, name: true, lead: { select: { name: true } } },
+  });
+  if (projects.length === 0) return [];
+
+  const [statusCounts, overdueCounts, urgentCounts, activityRows, completionRows] =
+    await Promise.all([
+      prisma.task.groupBy({
+        by: ["projectId", "status"],
+        _count: { _all: true },
+      }),
+      prisma.task.groupBy({
+        by: ["projectId"],
+        where: { status: { in: [...OPEN_STATUSES] }, dueDate: { lt: now } },
+        _count: { _all: true },
+      }),
+      prisma.task.groupBy({
+        by: ["projectId"],
+        where: {
+          status: { in: [...OPEN_STATUSES] },
+          priority: "URGENT",
+          assigneeId: null,
+        },
+        _count: { _all: true },
+      }),
+      prisma.activityLog.findMany({
+        where: { createdAt: { gte: since14d } },
+        select: { createdAt: true, task: { select: { projectId: true } } },
+      }),
+      prisma.activityLog.findMany({
+        where: { ...COMPLETION_LOG, createdAt: { gte: sparkStart } },
+        select: {
+          taskId: true,
+          createdAt: true,
+          task: { select: { projectId: true } },
+        },
+      }),
+    ]);
+
+  const statusFor = (projectId: string, status: string): number =>
+    statusCounts.find((g) => g.projectId === projectId && g.status === status)
+      ?._count._all ?? 0;
+  const scalarFor = (
+    rows: { projectId: string; _count: { _all: number } }[],
+    projectId: string,
+  ): number => rows.find((g) => g.projectId === projectId)?._count._all ?? 0;
+
+  const activity7d = new Map<string, number>();
+  const activity14d = new Map<string, number>();
+  for (const row of activityRows) {
+    const id = row.task.projectId;
+    activity14d.set(id, (activity14d.get(id) ?? 0) + 1);
+    if (row.createdAt >= since7d) {
+      activity7d.set(id, (activity7d.get(id) ?? 0) + 1);
+    }
+  }
+
+  // Per-project, per-week completion sets (de-duped by taskId, as elsewhere).
+  const sparks = new Map<string, Set<string>[]>();
+  for (const row of completionRows) {
+    const id = row.task.projectId;
+    const i = Math.floor(
+      (startOfIsoWeek(row.createdAt).getTime() - sparkStart.getTime()) / WEEK_MS,
+    );
+    if (i < 0 || i >= SPARK_WEEKS) continue;
+    let weeks = sparks.get(id);
+    if (!weeks) {
+      weeks = Array.from({ length: SPARK_WEEKS }, () => new Set<string>());
+      sparks.set(id, weeks);
+    }
+    weeks[i]!.add(row.taskId);
+  }
+
+  const cards = projects.map((p): ExecutiveProject => {
+    const todo = statusFor(p.id, "TODO");
+    const inProgress = statusFor(p.id, "IN_PROGRESS");
+    const inReview = statusFor(p.id, "IN_REVIEW");
+    const done = statusFor(p.id, "DONE");
+    const open = todo + inProgress + inReview;
+    const overdue = scalarFor(overdueCounts, p.id);
+    const unassignedUrgent = scalarFor(urgentCounts, p.id);
+    const seen14d = activity14d.get(p.id) ?? 0;
+
+    return {
+      id: p.id,
+      key: p.key,
+      name: p.name,
+      leadName: p.lead.name,
+      done,
+      total: open + done,
+      open,
+      inReview,
+      overdue,
+      unassignedUrgent,
+      activity7d: activity7d.get(p.id) ?? 0,
+      activity14d: seen14d,
+      spark: (sparks.get(p.id) ?? []).map((set) => set.size),
+      health: projectHealth({
+        open,
+        overdue,
+        unassignedUrgent,
+        activity14d: seen14d,
+      }),
+      canOpen: s.memberProjectIds.has(p.id),
+    };
+  });
+
+  return cards.sort(
+    (a, b) =>
+      HEALTH_ORDER[a.health] - HEALTH_ORDER[b.health] || b.open - a.open,
+  );
 }
