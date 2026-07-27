@@ -2543,12 +2543,21 @@ describe("grantAllProjectsViewer", () => {
     expect(result).toEqual({ ok: true });
     // p1 already has a row (possibly a HIGHER team-derived role) — untouched.
     expect(db.projectMembership.upsert).toHaveBeenCalledTimes(1);
-    expect(db.projectMembership.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { projectId_userId: { projectId: "p2", userId: USER_ID } },
-        update: { manualRole: "VIEWER" },
-      }),
-    );
+    // FULL equality, not objectContaining: the `create` branch is the whole
+    // point of this task. A partial match would still pass if a future edit
+    // dropped `manualRole` from `create`, producing exactly the sourceless row
+    // that recomputeMembership deletes weeks later. Mirrors addProjectMember's
+    // own test, which asserts the same shape the same way.
+    expect(db.projectMembership.upsert).toHaveBeenCalledWith({
+      where: { projectId_userId: { projectId: "p2", userId: USER_ID } },
+      update: { manualRole: "VIEWER" },
+      create: {
+        projectId: "p2",
+        userId: USER_ID,
+        projectRole: "VIEWER",
+        manualRole: "VIEWER",
+      },
+    });
     expect(mockRecomputeMembership).toHaveBeenCalledWith(db, "p2", USER_ID);
     expect(mockRecomputeMembership).not.toHaveBeenCalledWith(db, "p1", USER_ID);
   });
