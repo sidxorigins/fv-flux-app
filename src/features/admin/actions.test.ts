@@ -79,6 +79,7 @@ import {
   addTeamMember,
   assignTeamManager,
   assignTeamProject,
+  changeGlobalRole,
   createTeam,
   removeProjectLead,
   removeProjectMember,
@@ -1184,6 +1185,64 @@ describe("setPrimaryLead", () => {
           targetType: "Project",
           targetId: PROJECT_ID,
           metadata: { projectId: PROJECT_ID, from: OLD_PRIMARY_ID, to: USER_ID },
+        }),
+      }),
+    );
+  });
+});
+
+describe("changeGlobalRole", () => {
+  it("refuses to demote the last active admin to EXECUTIVE", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "target-1",
+      globalRole: "ADMIN",
+      status: "ACTIVE",
+    });
+    db.user.count.mockResolvedValue(1);
+
+    const result = await changeGlobalRole({ userId: "target-1", role: "EXECUTIVE" });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "You can't demote the last active admin.",
+    });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("allows demoting an admin to EXECUTIVE when another active admin remains", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "target-1",
+      globalRole: "ADMIN",
+      status: "ACTIVE",
+    });
+    db.user.count.mockResolvedValue(2);
+    db.user.update.mockResolvedValue({});
+
+    const result = await changeGlobalRole({ userId: "target-1", role: "EXECUTIVE" });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "target-1" },
+      data: { globalRole: "EXECUTIVE" },
+    });
+  });
+
+  it("promotes a plain user to EXECUTIVE and audits the change", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "target-2",
+      globalRole: "USER",
+      status: "ACTIVE",
+    });
+    db.user.update.mockResolvedValue({});
+
+    const result = await changeGlobalRole({ userId: "target-2", role: "EXECUTIVE" });
+
+    expect(result).toEqual({ ok: true });
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "user.role_changed",
+          metadata: { from: "USER", to: "EXECUTIVE" },
         }),
       }),
     );

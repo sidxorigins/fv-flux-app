@@ -8,7 +8,7 @@ import { z } from "zod";
 import { emailSchema, usernameSchema } from "@/features/auth/schemas";
 
 // ── Enum schemas (mirror the Prisma enums) ──────────────────────────────────
-export const globalRoleSchema = z.enum(["ADMIN", "USER"]);
+export const globalRoleSchema = z.enum(["ADMIN", "EXECUTIVE", "USER"]);
 export const projectRoleSchema = z.enum(["MANAGER", "MEMBER", "VIEWER"]);
 
 /**

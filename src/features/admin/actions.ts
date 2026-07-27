@@ -518,9 +518,10 @@ export async function changeGlobalRole(input: unknown): Promise<ActionResult> {
       return { ok: true }; // idempotent no-op
     }
 
-    // Demotion guard (ADMIN → USER): never strip the final ACTIVE admin, or the
-    // platform can be locked out of its own admin area.
-    if (target.globalRole === "ADMIN" && role === "USER") {
+    // Demotion guard: never strip the final ACTIVE admin of ADMIN — for ANY
+    // target role, not just USER. With EXECUTIVE in the enum, a `role === "USER"`
+    // check would let `ADMIN → EXECUTIVE` lock the org out of /admin permanently.
+    if (target.globalRole === "ADMIN" && role !== "ADMIN") {
       const activeAdmins = await prisma.user.count({
         where: { globalRole: "ADMIN", status: "ACTIVE" },
       });

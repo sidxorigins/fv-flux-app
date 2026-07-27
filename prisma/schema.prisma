@@ -19,6 +19,7 @@ datasource db {
 
 enum GlobalRole {
   ADMIN
+  EXECUTIVE
   USER
 }
 
