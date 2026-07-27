@@ -377,3 +377,191 @@ export async function getProjectHealth(
       HEALTH_ORDER[a.health] - HEALTH_ORDER[b.health] || b.open - a.open,
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Needs attention
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type AttentionKind = "OVERDUE" | "STUCK_IN_REVIEW" | "UNOWNED_URGENT";
+
+export interface AttentionItem {
+  id: string;
+  taskKey: string;
+  projectId: string;
+  projectKey: string;
+  title: string;
+  kind: AttentionKind;
+  /** Days overdue, or days sitting in review — whichever the kind implies. */
+  ageDays: number;
+  assigneeName: string | null;
+  canOpen: boolean;
+}
+
+const ATTENTION_CAP = 15;
+const REVIEW_STUCK_DAYS = 5;
+
+const KIND_ORDER: Record<AttentionKind, number> = {
+  OVERDUE: 0,
+  STUCK_IN_REVIEW: 1,
+  UNOWNED_URGENT: 2,
+};
+
+/**
+ * The ranked "needs your attention" list. THE ONLY row-level read in this
+ * module — three narrow, individually-capped selects, merged and truncated to
+ * ATTENTION_CAP.
+ *
+ * A task can qualify under more than one rule; it appears ONCE, under its
+ * highest-ranked kind (overdue beats stuck-in-review beats unowned-urgent).
+ */
+export async function getAttentionItems(
+  scope?: ExecutiveScope,
+): Promise<AttentionItem[]> {
+  await requireExecutive(); // unconditional — see getExecutiveKpis
+  const s = scope ?? (await getExecutiveScope());
+
+  const now = new Date();
+  const reviewCutoff = new Date(now.getTime() - REVIEW_STUCK_DAYS * DAY_MS);
+
+  const select = {
+    id: true,
+    key: true,
+    title: true,
+    dueDate: true,
+    updatedAt: true,
+    projectId: true,
+    project: { select: { key: true } },
+    assignee: { select: { name: true } },
+  } as const;
+
+  const [overdue, stuck, unowned] = await Promise.all([
+    prisma.task.findMany({
+      where: {
+        status: { in: [...OPEN_STATUSES] },
+        dueDate: { lt: now },
+        priority: { in: ["URGENT", "HIGH"] },
+      },
+      orderBy: { dueDate: "asc" },
+      take: ATTENTION_CAP,
+      select,
+    }),
+    prisma.task.findMany({
+      where: { status: "IN_REVIEW", updatedAt: { lt: reviewCutoff } },
+      orderBy: { updatedAt: "asc" },
+      take: ATTENTION_CAP,
+      select,
+    }),
+    prisma.task.findMany({
+      where: {
+        status: { in: [...OPEN_STATUSES] },
+        priority: "URGENT",
+        assigneeId: null,
+      },
+      orderBy: { createdAt: "asc" },
+      take: ATTENTION_CAP,
+      select,
+    }),
+  ]);
+
+  const days = (from: Date): number =>
+    Math.max(0, Math.floor((now.getTime() - from.getTime()) / DAY_MS));
+
+  const seen = new Set<string>();
+  const items: AttentionItem[] = [];
+
+  const push = (
+    rows: typeof overdue,
+    kind: AttentionKind,
+    age: (row: (typeof overdue)[number]) => number,
+  ): void => {
+    for (const row of rows) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      items.push({
+        id: row.id,
+        taskKey: row.key,
+        projectId: row.projectId,
+        projectKey: row.project.key,
+        title: row.title,
+        kind,
+        ageDays: age(row),
+        assigneeName: row.assignee?.name ?? null,
+        canOpen: s.memberProjectIds.has(row.projectId),
+      });
+    }
+  };
+
+  // Order of these three calls IS the precedence — `seen` keeps the first win.
+  push(overdue, "OVERDUE", (r) => (r.dueDate ? days(r.dueDate) : 0));
+  push(stuck, "STUCK_IN_REVIEW", (r) => days(r.updatedAt));
+  push(unowned, "UNOWNED_URGENT", () => 0);
+
+  return items
+    .sort(
+      (a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.ageDays - a.ageDays,
+    )
+    .slice(0, ATTENTION_CAP);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// People & workload
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface OrgWorkloadEntry {
+  userId: string;
+  name: string;
+  openTasks: number;
+  overdueTasks: number;
+}
+
+const WORKLOAD_LIMIT = 10;
+
+/**
+ * Open task counts per assignee across EVERY project, busiest first, top 10.
+ * Three queries: two groupBys plus one name lookup — never task rows.
+ */
+export async function getOrgWorkload(): Promise<OrgWorkloadEntry[]> {
+  await requireExecutive(); // unconditional — see getExecutiveKpis
+
+  const now = new Date();
+
+  const [open, overdue] = await Promise.all([
+    prisma.task.groupBy({
+      by: ["assigneeId"],
+      where: { status: { in: [...OPEN_STATUSES] }, assigneeId: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { assigneeId: "desc" } },
+      take: WORKLOAD_LIMIT,
+    }),
+    prisma.task.groupBy({
+      by: ["assigneeId"],
+      where: {
+        status: { in: [...OPEN_STATUSES] },
+        assigneeId: { not: null },
+        dueDate: { lt: now },
+      },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const userIds = open
+    .map((g) => g.assigneeId)
+    .filter((id): id is string => id !== null);
+  if (userIds.length === 0) return [];
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, name: true },
+  });
+  const nameOf = new Map(users.map((u) => [u.id, u.name]));
+  const overdueOf = new Map(
+    overdue.map((g) => [g.assigneeId, g._count._all] as const),
+  );
+
+  return userIds.map((id) => ({
+    userId: id,
+    name: nameOf.get(id) ?? "Unknown",
+    openTasks: open.find((g) => g.assigneeId === id)?._count._all ?? 0,
+    overdueTasks: overdueOf.get(id) ?? 0,
+  }));
+}
