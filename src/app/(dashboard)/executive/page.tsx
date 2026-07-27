@@ -152,20 +152,8 @@ export default async function ExecutivePage() {
           <ThroughputSpark data={sparkData} />
         </div>
 
-        {/* B. Attention + throughput */}
-        {/* grid-cols-1 and min-w-0 are explicit on purpose — see the Panel note above. */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="min-w-0 lg:col-span-2">
-            <Panel title="Needs attention">
-              <AttentionList items={attention} />
-            </Panel>
-          </div>
-          <Panel title="Created vs completed">
-            <OrgThroughputChart data={throughput} />
-          </Panel>
-        </div>
-
-        {/* C. Project health board */}
+        {/* B. Project health board — the primary answer to "how is every
+            project doing?", so it leads the body ahead of the risk list. */}
         <div className="flex flex-col gap-3">
           <SectionHeading>Projects</SectionHeading>
           {projects.length === 0 ? (
@@ -178,6 +166,19 @@ export default async function ExecutivePage() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* C. Attention + throughput */}
+        {/* grid-cols-1 and min-w-0 are explicit on purpose — see the Panel note above. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="min-w-0 lg:col-span-2">
+            <Panel title="Needs attention">
+              <AttentionList items={attention} />
+            </Panel>
+          </div>
+          <Panel title="Created vs completed">
+            <OrgThroughputChart data={throughput} />
+          </Panel>
         </div>
 
         {/* D. People & workload */}
