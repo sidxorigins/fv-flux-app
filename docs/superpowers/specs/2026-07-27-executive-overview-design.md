@@ -111,9 +111,11 @@ Health is a **pure function** over pre-aggregated counts, unit-tested, evaluated
 
 ```
 STALLED   — activity14d == 0 && open > 0
-AT_RISK   — overdue > 0 || unassignedUrgent > 0 || completedThisWeek < completedLastWeek
+AT_RISK   — overdue > 0 || unassignedUrgent > 0
 ON_TRACK  — otherwise
 ```
+
+A week-over-week completion decline was deliberately **rejected** as an `AT_RISK` trigger: on a quiet week it would paint healthy projects amber, and a signal that fires on healthy projects stops being read. Amber means something concrete and actionable — work is late, or urgent work has no owner.
 
 Pills use the functional tokens: `ON_TRACK` → `--success`, `AT_RISK` → `--warning`, `STALLED` → `--muted-foreground`. Orange stays reserved for accents and CTAs.
 
@@ -128,7 +130,7 @@ New `src/features/executive/queries.ts`, following the conventions in `features/
 - A single `getExecutiveScope()` resolves the user via `requireExecutive()` **once**; every query takes the scope so `Promise.all` does not re-authorise six times. Each query still resolves its own scope when called standalone.
 - Aggregates come exclusively from `groupBy` / `count` / narrow selects. No query loads full task rows.
 - The only row-level read is the attention list, which is narrow-selected and capped at 15.
-- Health inputs (per-project counts, activity windows, weekly completion) are computed in a small number of grouped queries keyed by `projectId`, then zipped in memory — not N queries per project.
+- Per-project card inputs (status counts, overdue, unassigned-urgent, activity windows, and the 6-week completion series behind the sparkline) are computed in a small number of grouped queries keyed by `projectId`, then zipped in memory — not N queries per project.
 
 Every query calls `requireExecutive()`, so the page cannot leak org-wide data to a plain `USER` even if the route guard were bypassed.
 
