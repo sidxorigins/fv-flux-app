@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -23,7 +22,6 @@ interface ResetPasswordFormProps {
 }
 
 export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -42,8 +40,12 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     startTransition(async () => {
       const result = await resetPassword(values);
       if (result.ok) {
+        // Deliberately NO router.refresh() here. Refreshing re-runs the page's
+        // server component, which re-validates a token we just burned — the
+        // success screen would be replaced by "this link is invalid". There is
+        // no server state worth re-reading anyway: the user is signed out and
+        // the only way forward is the sign-in link below.
         setDone(true);
-        router.refresh();
       } else {
         setFormError(result.error);
       }
