@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 import {
   ATTACHMENT_ALLOWED_TYPES,
   ATTACHMENT_MAX_BYTES,
+  VIDEO_MAX_BYTES,
+  maxBytesForType,
 } from "../constants";
 import type { AttachmentWithUploader } from "../types";
 import {
@@ -81,8 +83,11 @@ function precheck(file: File): string | null {
     return `"${file.name}" is not an allowed file type.`;
   }
   if (file.size <= 0) return `"${file.name}" is empty.`;
-  if (file.size > ATTACHMENT_MAX_BYTES) {
-    return `"${file.name}" exceeds the ${formatBytes(ATTACHMENT_MAX_BYTES)} limit.`;
+  // Video gets a much larger ceiling than everything else — mirrors
+  // maxBytesForType on the server, which is the authority.
+  const limit = maxBytesForType(file.type);
+  if (file.size > limit) {
+    return `"${file.name}" exceeds the ${formatBytes(limit)} limit.`;
   }
   return null;
 }
@@ -443,7 +448,7 @@ export function AttachmentSection({
             Upload
           </Button>
           <span className="text-xs text-muted-foreground">
-            Max {formatBytes(ATTACHMENT_MAX_BYTES)}
+            Max {formatBytes(ATTACHMENT_MAX_BYTES)} · video {formatBytes(VIDEO_MAX_BYTES)}
           </span>
         </div>
       ) : null}

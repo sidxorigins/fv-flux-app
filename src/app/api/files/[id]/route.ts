@@ -12,7 +12,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { AuthorizationError, requireProjectRole } from "@/lib/permissions";
-import { presignDownloadUrl } from "@/lib/r2";
+import { mustForceDownload, presignDownloadUrl } from "@/lib/r2";
 
 export async function GET(
   _request: NextRequest,
@@ -32,6 +32,7 @@ export async function GET(
       select: {
         key: true,
         filename: true,
+        contentType: true,
         task: { select: { projectId: true } },
       },
     });
@@ -40,9 +41,15 @@ export async function GET(
     // Read access to the file's project is required on every request.
     await requireProjectRole(attachment.task.projectId, "VIEWER");
 
+    // SVG and HTML are ALWAYS downloaded, never rendered — the caller does not
+    // get a say. Both can carry <script>, and serving them inline would let
+    // anyone who can attach a file host a live page behind a link that looks
+    // like it came from Flux. See NEVER_INLINE_TYPES in lib/r2.
     const presigned = await presignDownloadUrl(
       attachment.key,
-      forceDownload ? attachment.filename : undefined,
+      forceDownload || mustForceDownload(attachment.contentType)
+        ? attachment.filename
+        : undefined,
     );
 
     // 302 to the presigned URL. `private, no-store` keeps the redirect itself out

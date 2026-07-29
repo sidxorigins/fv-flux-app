@@ -11,7 +11,7 @@
 // client-consumed util. Server Actions ("use server") are safe to import here.
 import {
   ATTACHMENT_ALLOWED_TYPES,
-  ATTACHMENT_MAX_BYTES,
+  maxBytesForType,
 } from "@/features/attachments/constants";
 import {
   requestCommentUpload,
@@ -40,8 +40,11 @@ export function precheckFile(file: File): string | null {
     return `"${file.name}" is not an allowed file type.`;
   }
   if (file.size <= 0) return `"${file.name}" is empty.`;
-  if (file.size > ATTACHMENT_MAX_BYTES) {
-    return `"${file.name}" exceeds the 25 MB limit.`;
+  // Video gets a much larger ceiling — mirrors maxBytesForType on the server.
+  if (file.size > maxBytesForType(file.type)) {
+    return file.type.startsWith("video/")
+      ? `"${file.name}" exceeds the 1 GB limit.`
+      : `"${file.name}" exceeds the 25 MB limit.`;
   }
   return null;
 }
