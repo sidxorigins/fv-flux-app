@@ -18,23 +18,65 @@ import { sanitizePlainText } from "@/lib/sanitize";
 // ── Limits & allowlists (enforce server-side before presigning) ──────────────
 
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+/** Video only — see maxBytesForType. Bytes go straight to R2, never through us. */
+export const VIDEO_MAX_BYTES = 1024 * 1024 * 1024; // 1 GB
 export const AVATAR_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
-// Allowlist, not blocklist. SVG is deliberately EXCLUDED — it can carry scripts
-// and is an XSS vector when served/rendered inline.
+// Allowlist, not blocklist.
+//
+// SVG and HTML are allowed but can NEVER be served inline — see
+// NEVER_INLINE_TYPES below. Both can carry <script>, and /api/files/[id]
+// defaults to inline so comment images render. Rendered from the R2 origin they
+// cannot touch a Flux session cookie (different origin), but they could still
+// host a convincing fake login page behind a link that looks like it came from
+// Flux. Forcing download removes that entirely while keeping the file usable.
 export const ATTACHMENT_ALLOWED_TYPES = [
   "image/png",
   "image/jpeg",
   "image/webp",
   "image/gif",
+  "image/avif",
+  "image/bmp",
+  "image/tiff",
+  // iPhone's default camera format since iOS 11. Browsers can't render it
+  // inline, so it downloads — that's a browser limitation, not a policy here.
+  "image/heic",
+  "image/heif",
+  "image/svg+xml",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime", // .mov — iPhone/macOS screen recordings
   "application/pdf",
   "text/plain",
   "text/csv",
+  "text/html",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
   "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
   "application/zip",
 ] as const;
+
+/**
+ * Types that must ALWAYS be sent as a download, never rendered in the browser,
+ * regardless of what the caller asks for. Both can execute script.
+ */
+export const NEVER_INLINE_TYPES = ["image/svg+xml", "text/html"] as const;
+
+/** True when this type must be forced to `Content-Disposition: attachment`. */
+export function mustForceDownload(contentType: string): boolean {
+  return (NEVER_INLINE_TYPES as readonly string[]).includes(contentType);
+}
+
+/**
+ * The size ceiling for a given content type. Video gets a far larger budget
+ * than everything else — a screen recording is legitimately hundreds of MB,
+ * while a 1 GB .txt is a mistake we should reject rather than store forever.
+ */
+export function maxBytesForType(contentType: string): number {
+  return contentType.startsWith("video/")
+    ? VIDEO_MAX_BYTES
+    : ATTACHMENT_MAX_BYTES;
+}
 
 export const AVATAR_ALLOWED_TYPES = [
   "image/png",
@@ -46,6 +88,10 @@ export type AttachmentContentType = (typeof ATTACHMENT_ALLOWED_TYPES)[number];
 export type AvatarContentType = (typeof AVATAR_ALLOWED_TYPES)[number];
 
 const PRESIGN_EXPIRY_SECONDS = 10 * 60; // 10 minutes
+// Uploads get longer: a 1 GB video over a slow office link will not finish in
+// 10 minutes, and the URL expiring mid-transfer fails the whole upload. Still
+// single-use in practice — it is bound to one key, type and exact byte count.
+const UPLOAD_PRESIGN_EXPIRY_SECONDS = 60 * 60; // 1 hour
 
 // ── Lazy client so the app builds with empty env; fails loudly only on use ────
 
@@ -140,7 +186,7 @@ export function presignUploadUrl(
     ContentLength: contentLength,
   });
   return getSignedUrl(getClient(), command, {
-    expiresIn: PRESIGN_EXPIRY_SECONDS,
+    expiresIn: UPLOAD_PRESIGN_EXPIRY_SECONDS,
   });
 }
 
