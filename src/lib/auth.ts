@@ -48,6 +48,7 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
           name: user.name,
           username: user.username,
           globalRole: user.globalRole,
+          pwdAt: user.passwordChangedAt?.getTime() ?? 0,
         };
       },
     }),
@@ -59,6 +60,9 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
         token.id = user.id!;
         token.username = user.username;
         token.globalRole = user.globalRole;
+        // Watermark: a session is only honoured while this matches or exceeds
+        // the user's current passwordChangedAt (checked in requireUser).
+        token.pwdAt = user.pwdAt;
       }
       return token;
     },
@@ -67,6 +71,7 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
         session.user.id = token.id;
         session.user.username = token.username;
         session.user.globalRole = token.globalRole;
+        session.user.pwdAt = token.pwdAt;
       }
       return session;
     },

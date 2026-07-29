@@ -13,7 +13,10 @@
 //
 // DB IS THE SOURCE OF TRUTH, NOT THE JWT: every helper re-fetches the user and
 // requires status === ACTIVE. Suspending a user therefore takes effect on the very
-// next request, even if the user still holds a valid (un-expired) JWT.
+// next request, even if the user still holds a valid (un-expired) JWT. The same
+// per-request fetch also enforces password-change revocation: requireUser
+// compares the freshly-loaded `passwordChangedAt` against the session's `pwdAt`
+// watermark, so resetting a password ends every session issued before it.
 
 import { cache } from "react";
 
@@ -67,6 +70,15 @@ export const requireUser = cache(async (): Promise<User> => {
   // User could have been deleted since the JWT was issued.
   if (!user) throw new AuthorizationError("UNAUTHENTICATED");
   if (user.status !== "ACTIVE") throw new AuthorizationError("SUSPENDED");
+
+  // A password reset ends every session issued before it. The row is already
+  // loaded, so this costs nothing extra. UNAUTHENTICATED (not SUSPENDED) is
+  // right here: the account is fine, the session is simply stale, and the
+  // existing 401 path already redirects to sign-in.
+  const changedAt = user.passwordChangedAt?.getTime() ?? 0;
+  if (changedAt > (session.user?.pwdAt ?? 0)) {
+    throw new AuthorizationError("UNAUTHENTICATED");
+  }
 
   return user;
 });

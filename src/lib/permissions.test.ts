@@ -121,6 +121,39 @@ describe("requireUser", () => {
   });
 });
 
+describe("requireUser — password-change revocation", () => {
+  // Distinct user ids per case: requireUser is wrapped in React cache(), and
+  // nothing in this file resets that between cases, so reusing an id could
+  // let one case's memoised result leak into the next.
+  it("rejects a session issued before the last password change", async () => {
+    const changedAt = new Date("2026-07-29T12:00:00Z");
+    mockAuth.mockResolvedValue({
+      user: { id: "user-pwd-stale", pwdAt: changedAt.getTime() - 60_000 },
+    });
+    mockFindUser.mockResolvedValue(
+      makeUser({ id: "user-pwd-stale", passwordChangedAt: changedAt }),
+    );
+    await expectAuthError(requireUser(), "UNAUTHENTICATED");
+  });
+
+  it("accepts a session issued after the last password change", async () => {
+    const changedAt = new Date("2026-07-29T12:00:00Z");
+    mockAuth.mockResolvedValue({
+      user: { id: "user-pwd-fresh", pwdAt: changedAt.getTime() + 60_000 },
+    });
+    const dbUser = makeUser({ id: "user-pwd-fresh", passwordChangedAt: changedAt });
+    mockFindUser.mockResolvedValue(dbUser);
+    await expect(requireUser()).resolves.toEqual(dbUser);
+  });
+
+  it("accepts a user who has never reset their password", async () => {
+    mockAuth.mockResolvedValue({ user: { id: "user-pwd-never", pwdAt: 0 } });
+    const dbUser = makeUser({ id: "user-pwd-never", passwordChangedAt: null });
+    mockFindUser.mockResolvedValue(dbUser);
+    await expect(requireUser()).resolves.toEqual(dbUser);
+  });
+});
+
 describe("requireAdmin", () => {
   it("rejects a regular USER", async () => {
     mockAuth.mockResolvedValue({ user: { id: "user-1" } });
