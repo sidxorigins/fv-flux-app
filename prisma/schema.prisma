@@ -73,6 +73,10 @@ model User {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   tourCompletedAt DateTime?
+  // Watermark for session revocation: a JWT issued before this instant is no
+  // longer honoured (see requireUser in lib/permissions.ts). Null until the
+  // user's first password reset.
+  passwordChangedAt DateTime?
 
   // Relations
   projectsLed        Project[]           @relation("ProjectLead")
@@ -96,6 +100,7 @@ model User {
   teamMemberships    TeamMembership[]
   projectLeads       ProjectLead[]
   savedFilters       SavedFilter[]
+  passwordResetTokens PasswordResetToken[]
 }
 
 model Project {
@@ -152,6 +157,22 @@ model Invite {
 
   @@index([email])
   @@index([invitedById])
+}
+
+/// Single-use, expiring password-reset token. Only the SHA-256 hash of the
+/// token is stored — the raw value exists solely in the email we send, so a
+/// database leak yields nothing usable. Same contract as Invite.tokenHash.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Task {
