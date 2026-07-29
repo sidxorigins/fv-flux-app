@@ -47,6 +47,22 @@ describe("ATTACHMENT_ALLOWED_TYPES", () => {
     }
   });
 
+  it("accepts .zip from every OS that reports it differently", () => {
+    // macOS browsers send application/zip; Windows Chrome/Edge send
+    // application/x-zip-compressed. Same file, two names — missing the second
+    // made zips look broken on Windows only.
+    expect(allowed).toContain("application/zip");
+    expect(allowed).toContain("application/x-zip-compressed");
+  });
+
+  it("never allows the generic binary fallback", () => {
+    // application/octet-stream is what a browser sends when it cannot identify
+    // a file at all. Allowing it would let ANY file through and make the
+    // allowlist decorative — this test exists to stop a future "fix" for a
+    // stubborn upload from quietly opening that door.
+    expect(allowed).not.toContain("application/octet-stream");
+  });
+
   it("has no duplicate entries", () => {
     expect(new Set(allowed).size).toBe(allowed.length);
   });

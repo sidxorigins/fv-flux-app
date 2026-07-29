@@ -53,7 +53,14 @@ export const ATTACHMENT_ALLOWED_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
   "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
+  // .zip has no single agreed MIME type. macOS browsers send application/zip;
+  // Windows Chrome and Edge send application/x-zip-compressed, which is why
+  // zips appeared to be rejected. Both are the same file.
+  // application/octet-stream is deliberately NOT here — it is the generic
+  // fallback for anything the OS cannot identify, so allowing it would let any
+  // file through and defeat the allowlist entirely.
   "application/zip",
+  "application/x-zip-compressed",
 ] as const;
 
 /**
