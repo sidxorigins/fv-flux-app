@@ -146,6 +146,27 @@ The link is built from `NEXT_PUBLIC_APP_URL`, never hardcoded.
 - `src/app/(auth)/forgot-password/page.tsx` + `ForgotPasswordForm.tsx`
 - `src/app/(auth)/reset-password/page.tsx` + `ResetPasswordForm.tsx`
 - `src/features/auth/components/LoginForm.tsx` — the link
+- `src/proxy.ts` — both routes added to `PUBLIC_PREFIXES`
+- `src/app/(dashboard)/layout.tsx` — one `requireUser` gate for the group
+
+## Found during implementation
+
+Three things this design missed, all caught by walking the flow in a browser
+rather than by the mocked unit tests:
+
+1. **`proxy.ts` must allow the new routes.** They were gated behind a session,
+   so both pages redirected to `/login` for precisely the logged-out users they
+   exist for. Password recovery is unauthenticated by definition.
+2. **No `router.refresh()` on success.** Refreshing re-runs the page's server
+   component, which re-validates the token the submit just burned — the user
+   saw "This reset link is invalid" after a reset that had actually succeeded.
+3. **A revoked session needs somewhere to land.** `proxy.ts` only checks that a
+   JWT exists, so a stale session reaches the dashboard and throws out of the
+   first nested server component that calls `requireUser` (the sidebar's unread
+   count), producing a server-error page. The `(dashboard)` group layout now
+   resolves the user once and redirects any `AuthorizationError` to `/login`.
+   It is request-memoised, so the pages below pay nothing, and it fixes the
+   identical pre-existing behaviour for suspended users.
 
 ## Testing
 
