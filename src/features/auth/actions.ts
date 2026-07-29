@@ -9,9 +9,13 @@ import bcrypt from "bcryptjs";
 import { AuthError } from "next-auth";
 import { prisma } from "@/lib/db";
 import { signIn } from "@/lib/auth";
-import { generateInviteToken, hashToken } from "@/lib/tokens";
+import { hashToken } from "@/lib/tokens";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendPasswordResetEmail } from "@/lib/mail";
+import {
+  RESET_TOKEN_TTL_MINUTES,
+  issuePasswordResetToken,
+} from "./reset-tokens";
 import {
   loginSchema,
   registerSchema,
@@ -23,9 +27,6 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
 
 const FIFTEEN_MIN = 15 * 60_000;
 const ONE_HOUR = 60 * 60_000;
-
-/** Reset links are deliberately short-lived — see the password-reset design doc. */
-const RESET_TOKEN_TTL_MINUTES = 60;
 
 /** Same generic outcome for every request, so the response can't be used to probe for accounts. */
 const RESET_REQUEST_ACCEPTED: ActionResult = { ok: true };
@@ -264,25 +265,11 @@ export async function requestPasswordReset(input: unknown): Promise<ActionResult
     return RESET_REQUEST_ACCEPTED;
   }
 
-  const token = generateInviteToken();
-  const tokenHash = hashToken(token);
-  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60_000);
+  const resetUrl = await issuePasswordResetToken(user.id);
 
-  // Requesting a new link retires any earlier one, so at most a single live
-  // token exists per user.
-  await prisma.passwordResetToken.updateMany({
-    where: { userId: user.id, usedAt: null },
-    data: { usedAt: new Date() },
-  });
-
-  await prisma.passwordResetToken.create({
-    data: { userId: user.id, tokenHash, expiresAt },
-  });
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   await sendPasswordResetEmail({
     to: user.email,
-    resetUrl: `${appUrl}/reset-password?token=${encodeURIComponent(token)}`,
+    resetUrl,
     expiresInMinutes: RESET_TOKEN_TTL_MINUTES,
   });
 

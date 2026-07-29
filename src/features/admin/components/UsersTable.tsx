@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MoreHorizontal, Shield, UserCheck, UserX } from "lucide-react";
+import { KeyRound, MoreHorizontal, Shield, UserCheck, UserX } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -50,8 +50,9 @@ import {
 } from "@/components/ui/table";
 import type { GlobalRole } from "@/generated/prisma/enums";
 
-import { changeGlobalRole, setUserStatus } from "../actions";
+import { adminResetPassword, changeGlobalRole, setUserStatus } from "../actions";
 import type { AdminUserRow } from "../queries";
+import { InviteResult } from "./InviteResult";
 import {
   GLOBAL_ROLE_LABELS,
   GLOBAL_ROLE_OPTIONS,
@@ -68,7 +69,8 @@ interface UsersTableProps {
 
 type PendingAction =
   | { type: "suspend" | "reactivate"; user: AdminUserRow }
-  | { type: "role"; user: AdminUserRow };
+  | { type: "role"; user: AdminUserRow }
+  | { type: "reset-password"; user: AdminUserRow };
 
 export function UsersTable({ users, currentUserId }: UsersTableProps) {
   const router = useRouter();
@@ -83,6 +85,7 @@ export function UsersTable({ users, currentUserId }: UsersTableProps) {
   const statusAction =
     pending?.type === "suspend" || pending?.type === "reactivate" ? pending : null;
   const roleAction = pending?.type === "role" ? pending : null;
+  const resetAction = pending?.type === "reset-password" ? pending : null;
 
   if (users.length === 0) {
     return (
@@ -155,6 +158,17 @@ export function UsersTable({ users, currentUserId }: UsersTableProps) {
                         <Shield />
                         Change role
                       </DropdownMenuItem>
+                      {/* Only ACTIVE accounts can use a reset link: an INVITED
+                          user still needs their invite, and a suspended one is
+                          refused at sign-in regardless. The server re-checks
+                          both — this only hides what wouldn't work. */}
+                      <DropdownMenuItem
+                        disabled={u.status !== "ACTIVE"}
+                        onClick={() => openAction({ type: "reset-password", user: u })}
+                      >
+                        <KeyRound />
+                        Reset password
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       {u.status === "SUSPENDED" ? (
                         <DropdownMenuItem
@@ -192,7 +206,102 @@ export function UsersTable({ users, currentUserId }: UsersTableProps) {
         onDone={() => setPending(null)}
         onSuccess={() => router.refresh()}
       />
+      <ResetPasswordDialog action={resetAction} onDone={() => setPending(null)} />
     </>
+  );
+}
+
+/**
+ * Admin-issued password reset. Two states in one dialog: confirm, then show the
+ * generated link. The link is always displayed with a copy control — that is
+ * the whole point of the admin path, since it exists for users who can't get
+ * the email themselves.
+ */
+function ResetPasswordDialog({
+  action,
+  onDone,
+}: {
+  action: { type: "reset-password"; user: AdminUserRow } | null;
+  onDone: () => void;
+}) {
+  const [isPending, startTransition] = React.useTransition();
+  const [result, setResult] = React.useState<{
+    resetUrl: string;
+    emailSent: boolean;
+  } | null>(null);
+  const [syncedId, setSyncedId] = React.useState<string | null>(null);
+
+  // Clear a previous result when a different user is targeted, so one admin's
+  // link is never shown under another user's name.
+  const actionId = action?.user.id ?? null;
+  if (actionId !== syncedId) {
+    setSyncedId(actionId);
+    setResult(null);
+  }
+
+  function confirm() {
+    if (!action) return;
+    startTransition(async () => {
+      const res = await adminResetPassword({ userId: action.user.id });
+      if (res.ok && res.data) {
+        setResult(res.data);
+        toast.success("Reset link generated");
+      } else {
+        toast.error(res.ok ? "Something went wrong. Please try again." : res.error);
+      }
+    });
+  }
+
+  return (
+    <Dialog open={!!action} onOpenChange={(o) => !o && onDone()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {result ? "Reset link ready" : "Reset password?"}
+          </DialogTitle>
+          <DialogDescription>
+            {result ? (
+              <>
+                Share this with{" "}
+                <strong className="text-foreground">{action?.user.name}</strong>. It
+                works once and expires in an hour. Their current password keeps
+                working until they use it.
+              </>
+            ) : (
+              <>
+                Generates a one-time link letting{" "}
+                <strong className="text-foreground">{action?.user.name}</strong>{" "}
+                set a new password. You won&apos;t see their password. Using the
+                link signs them out everywhere else.
+              </>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+
+        {result ? (
+          <InviteResult
+            inviteUrl={result.resetUrl}
+            emailSent={result.emailSent}
+            label="Password reset link"
+          />
+        ) : null}
+
+        <DialogFooter>
+          {result ? (
+            <Button onClick={onDone}>Done</Button>
+          ) : (
+            <>
+              <Button variant="ghost" disabled={isPending} onClick={onDone}>
+                Cancel
+              </Button>
+              <Button disabled={isPending} onClick={confirm}>
+                {isPending ? "Generating…" : "Generate link"}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

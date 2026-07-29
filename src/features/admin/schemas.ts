@@ -72,6 +72,15 @@ export const setUserStatusSchema = z.object({
   status: settableUserStatusSchema,
 });
 
+/**
+ * Admin-issued password reset. The admin picks a user and nothing else — they
+ * never choose or see the new password, only the one-time link that lets the
+ * user set it themselves.
+ */
+export const adminResetPasswordSchema = z.object({
+  userId: z.string().min(1, "Missing user id"),
+});
+
 // ── Per-project membership (the "give role-based access" screen) ─────────────
 export const membershipSchema = z.object({
   projectId: z.string().min(1, "Missing project id"),
@@ -171,6 +180,7 @@ export type SendInviteInput = z.infer<typeof sendInviteSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type ChangeGlobalRoleInput = z.infer<typeof changeGlobalRoleSchema>;
 export type SetUserStatusInput = z.infer<typeof setUserStatusSchema>;
+export type AdminResetPasswordInput = z.infer<typeof adminResetPasswordSchema>;
 export type MembershipInput = z.infer<typeof membershipSchema>;
 export type UpdateMembershipInput = z.infer<typeof updateMembershipSchema>;
 export type RemoveMembershipInput = z.infer<typeof removeMembershipSchema>;

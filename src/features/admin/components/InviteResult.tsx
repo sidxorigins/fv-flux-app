@@ -12,15 +12,22 @@ interface InviteResultProps {
   emailSent: boolean;
   /** Optional heading, e.g. "Invite sent" or "User created". */
   title?: string;
+  /** Field label above the link. Defaults to the invite/set-password wording. */
+  label?: string;
 }
 
 /**
- * Success panel shown after an invite / user-create. The invite link is ALWAYS
- * shown with a copy control (per the task brief), and the email-delivery status
- * tells the admin whether they still need to share the link manually (SMTP
- * unconfigured → the copy link is the delivery mechanism).
+ * Success panel shown after an invite / user-create / admin password reset. The
+ * link is ALWAYS shown with a copy control (per the task brief), and the
+ * email-delivery status tells the admin whether they still need to share it
+ * manually (SMTP unconfigured → the copy link is the delivery mechanism).
  */
-export function InviteResult({ inviteUrl, emailSent, title }: InviteResultProps) {
+export function InviteResult({
+  inviteUrl,
+  emailSent,
+  title,
+  label = "Set-password link",
+}: InviteResultProps) {
   return (
     <div className="flex flex-col gap-3">
       {title ? (
@@ -32,13 +39,13 @@ export function InviteResult({ inviteUrl, emailSent, title }: InviteResultProps)
 
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-medium text-muted-foreground">
-          Set-password link
+          {label}
         </label>
         <div className="flex items-center gap-2">
           <Input
             readOnly
             value={inviteUrl}
-            aria-label="Set-password link"
+            aria-label={label}
             className="font-mono text-xs"
             onFocus={(e) => e.currentTarget.select()}
           />
