@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { passwordSchema, usernameSchema } from "./schemas";
+import {
+  passwordSchema,
+  requestPasswordResetSchema,
+  usernameSchema,
+} from "./schemas";
 
 const RESERVED = [
   "admin",
@@ -152,5 +156,25 @@ describe("passwordSchema", () => {
 
   it("accepts a password with both a letter and a digit", () => {
     expect(passwordSchema.safeParse("correcthorse1").success).toBe(true);
+  });
+});
+
+describe("requestPasswordResetSchema", () => {
+  it("normalises the email the same way login does", () => {
+    const result = requestPasswordResetSchema.safeParse({
+      email: "  User@Company.COM ",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.email).toBe("user@company.com");
+  });
+
+  it("rejects a malformed email", () => {
+    expect(requestPasswordResetSchema.safeParse({ email: "nope" }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects a missing email", () => {
+    expect(requestPasswordResetSchema.safeParse({}).success).toBe(false);
   });
 });
