@@ -183,9 +183,37 @@ Vitest over the two actions and the callback:
 - `requireUser` still accepts a user who has never reset (`passwordChangedAt`
   null)
 
+## Admin-issued reset (added 2026-07-29)
+
+Originally deferred, then built: a "Reset password" action on each row of
+`/admin/users`, for users who can't complete the self-service flow (no mailbox
+access, mail not arriving).
+
+`adminResetPassword({ userId })` mints the *same* token via the shared issuer,
+mails it, and returns the URL so the dialog can show it with a copy control —
+the same shape as `createUser`'s set-password link, reusing `InviteResult`. The
+admin never sees or chooses a password.
+
+Token issuing lives in `features/auth/reset-tokens.ts` because a `"use server"`
+module may only export Server Actions, and because one implementation stops the
+two callers drifting on TTL, entropy, or the retire-the-previous-token rule —
+two live tokens would mean a link the user believed cancelled still worked.
+
+Guards (server-side; the UI only hides what wouldn't work anyway):
+
+- `INVITED` → refused, pointed at the invite flow: they have no password yet,
+  and `validateResetToken` requires `ACTIVE` so the link would dead-end.
+- `SUSPENDED` → refused until reactivated; `authorize()` would reject them regardless.
+- No `hashedPassword` (SSO-only) → refused, rather than quietly adding a second
+  way in.
+
+Audit: `user.password_reset_link_issued`, recording actor and target. The token
+and URL are deliberately absent — the audit log is readable in-app.
+
 ## Out of scope
 
-- Admin-triggered reset from `/admin/users` (deferred; revisit if lockouts
-  where the user has no inbox access turn out to be common)
+- Setting a temporary password directly (rejected: the admin would know the
+  password, it travels over chat in plaintext, and it needs a
+  force-change-at-next-login mechanism that doesn't exist)
 - Email change / verification
 - 2FA, or any second factor on the reset itself
