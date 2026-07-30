@@ -519,6 +519,111 @@ export async function sendDueReminderEmail(
   }
 }
 
+export interface SendPasswordResetEmailParams {
+  to: string;
+  resetUrl: string;
+  expiresInMinutes: number;
+}
+
+function buildPasswordResetHtml({
+  resetUrl,
+  expiresInMinutes,
+}: SendPasswordResetEmailParams): string {
+  const url = escapeHtml(resetUrl);
+  const mins = String(expiresInMinutes);
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#0a0a0a;font-family:'Outfit',Arial,Helvetica,sans-serif;color:#f5f5f7;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0a;padding:32px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background:#141414;border:1px solid #2a2a2a;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="padding:32px 32px 8px 32px;">
+                <div style="font-size:22px;font-weight:700;color:#f5f5f7;">Flux<span style="color:#ff6b35;">.</span></div>
+                <h1 style="font-size:20px;font-weight:600;margin:20px 0 8px 0;color:#f5f5f7;">Reset your password</h1>
+                <p style="font-size:15px;line-height:1.6;color:#9a9a9a;margin:0 0 24px 0;">
+                  Use the button below to choose a new password. This link works once and expires in ${mins} minutes.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 8px 32px;">
+                <a href="${url}" style="display:inline-block;background:#ff6b35;color:#0a0a0a;font-weight:600;font-size:15px;text-decoration:none;padding:12px 24px;border-radius:10px;">
+                  Reset password
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px 32px 32px;">
+                <p style="font-size:12px;line-height:1.6;color:#9a9a9a;margin:0;">
+                  Or paste this link into your browser:<br />
+                  <span style="color:#5b8def;word-break:break-all;">${url}</span>
+                </p>
+                <p style="font-size:12px;color:#6a6a6a;margin:16px 0 0 0;">
+                  If you didn't ask to reset your password, you can safely ignore this email — your current password still works.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function buildPasswordResetText({
+  resetUrl,
+  expiresInMinutes,
+}: SendPasswordResetEmailParams): string {
+  return [
+    "Someone asked to reset the password for your Flux account.",
+    "",
+    `Choose a new password (this link works once and expires in ${expiresInMinutes} minutes):`,
+    resetUrl,
+    "",
+    "If you didn't ask for this, you can safely ignore this email — your current password still works.",
+  ].join("\n");
+}
+
+/**
+ * Send a password-reset link. Same never-throw contract as the rest of this
+ * module: unconfigured SMTP logs the link so local dev can still complete the
+ * flow, and a transport failure is returned rather than raised.
+ */
+export async function sendPasswordResetEmail(
+  params: SendPasswordResetEmailParams,
+): Promise<SendResult> {
+  const transport = getTransport();
+
+  if (!transport) {
+    console.info(
+      `[mail] SMTP not configured — password reset link for ${params.to}: ${params.resetUrl}`,
+    );
+    return { sent: false, reason: "smtp-unconfigured" };
+  }
+
+  const from = process.env.SMTP_FROM ?? "Flux <no-reply@foodverse.io>";
+
+  try {
+    await transport.sendMail({
+      from,
+      to: params.to,
+      subject: "Reset your Flux password",
+      text: buildPasswordResetText(params),
+      html: buildPasswordResetHtml(params),
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error("[mail] password-reset send failed", err);
+    return {
+      sent: false,
+      error: err instanceof Error ? err.message : "unknown-error",
+    };
+  }
+}
+
 /**
  * Send an invite email. Returns:
  *   { sent: true }                                    — delivered to SMTP

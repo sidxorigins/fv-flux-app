@@ -15,7 +15,17 @@ import { getToken } from "next-auth/jwt";
 
 // Public paths reachable without a session. Auth.js endpoints (/api/auth/*) must
 // stay open so the sign-in flow itself can run.
-const PUBLIC_PREFIXES = ["/login", "/register", "/set-password"];
+// Password recovery is necessarily unauthenticated — a locked-out user has no
+// session by definition, so gating these would make the flow unreachable to
+// exactly the people it exists for. Both routes validate the reset token
+// server-side (see features/auth/actions.ts).
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/register",
+  "/set-password",
+  "/forgot-password",
+  "/reset-password",
+];
 
 function isPublicPath(pathname: string): boolean {
   // Landing page — exact match only; everything under / stays guarded.

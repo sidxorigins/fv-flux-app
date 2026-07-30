@@ -26,10 +26,15 @@ import {
   requireTeamManage,
 } from "@/lib/permissions";
 import { rateLimit } from "@/lib/rate-limit";
-import { sendInviteEmail } from "@/lib/mail";
+import { sendInviteEmail, sendPasswordResetEmail } from "@/lib/mail";
 import { generateInviteToken, hashToken } from "@/lib/tokens";
+import {
+  RESET_TOKEN_TTL_MINUTES,
+  issuePasswordResetToken,
+} from "@/features/auth/reset-tokens";
 
 import {
+  adminResetPasswordSchema,
   assignTeamManagerSchema,
   changeGlobalRoleSchema,
   createTeamSchema,
@@ -495,6 +500,84 @@ export async function setUserStatus(input: unknown): Promise<ActionResult> {
     revalidatePath("/admin/users");
     revalidatePath(`/admin/users/${userId}`);
     return { ok: true };
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err) };
+  }
+}
+
+/**
+ * Issue a password-reset link for any user, for when they can't complete the
+ * self-service flow themselves (no mailbox access, mail not arriving).
+ *
+ * The admin never sees or chooses the password: this mints the same one-time,
+ * 60-minute token the public flow uses, emails it, and hands the URL back so it
+ * can be passed on out-of-band — exactly how `createUser` returns a
+ * set-password link. Redeeming it revokes the user's other sessions, same as
+ * any other reset.
+ *
+ * Unlike the public action, messages here are specific: the caller is an
+ * authenticated admin who already knows the account exists, so there is no
+ * enumeration to protect against (same reasoning as `sendInvite`).
+ */
+export async function adminResetPassword(
+  input: unknown,
+): Promise<ActionResult<{ resetUrl: string; emailSent: boolean }>> {
+  try {
+    const admin = await requireAdmin();
+
+    const parsed = adminResetPasswordSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, error: "Invalid input." };
+    const { userId } = parsed.data;
+
+    const target = await prisma.user.findUnique({ where: { id: userId } });
+    if (!target) return { ok: false, error: "User not found." };
+
+    // An INVITED account has never set a password — the invite/set-password
+    // link is the right tool, and a reset link would land them on a form whose
+    // token `validateResetToken` refuses anyway (it requires ACTIVE).
+    if (target.status === "INVITED") {
+      return {
+        ok: false,
+        error: "That user hasn't registered yet — resend their invite instead.",
+      };
+    }
+    if (target.status !== "ACTIVE") {
+      return {
+        ok: false,
+        error: "Reactivate the account before resetting its password.",
+      };
+    }
+    // SSO-only account: issuing a password here would quietly add a second way
+    // in. Out of scope until SSO is actually wired up.
+    if (!target.hashedPassword) {
+      return {
+        ok: false,
+        error: "That account has no password login to reset.",
+      };
+    }
+
+    const resetUrl = await issuePasswordResetToken(target.id);
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: admin.id,
+        action: "user.password_reset_link_issued",
+        targetType: "User",
+        targetId: target.id,
+        // Never log the token or the URL — the audit trail is readable in-app.
+        metadata: { email: target.email, issuedBy: admin.username },
+      },
+    });
+
+    const send = await sendPasswordResetEmail({
+      to: target.email,
+      resetUrl,
+      expiresInMinutes: RESET_TOKEN_TTL_MINUTES,
+    });
+
+    revalidatePath("/admin/users");
+    revalidatePath(`/admin/users/${userId}`);
+    return { ok: true, data: { resetUrl, emailSent: send.sent } };
   } catch (err) {
     return { ok: false, error: friendlyAuthError(err) };
   }

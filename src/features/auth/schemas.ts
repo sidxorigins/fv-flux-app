@@ -64,6 +64,14 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+/**
+ * Forgot-password request. Email only — the response is identical whether or
+ * not the address belongs to an account, so nothing else is needed or wanted.
+ */
+export const requestPasswordResetSchema = z.object({
+  email: emailSchema,
+});
+
 export const registerSchema = z.object({
   token: z.string().min(1, "Missing invite token"),
   name: z.string().trim().min(1, "Name is required").max(80),
@@ -79,3 +87,6 @@ export const setPasswordSchema = z.object({
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type SetPasswordInput = z.infer<typeof setPasswordSchema>;
+export type RequestPasswordResetInput = z.infer<
+  typeof requestPasswordResetSchema
+>;
