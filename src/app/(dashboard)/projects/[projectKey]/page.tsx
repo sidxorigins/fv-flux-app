@@ -27,7 +27,6 @@ import type { RunningTimer, TaskTime } from "@/features/time/queries"
 import { ProjectTimeReport } from "@/features/time/components/ProjectTimeReport"
 import type { ActivityEntry } from "@/features/tasks/activity"
 import {
-  AssigneeAvatar,
   BacklogView,
   BoardView,
   CreateTaskDialog,
@@ -45,7 +44,9 @@ import {
   resolveTaskIdByKey,
 } from "@/features/tasks/queries"
 import { getSavedViews } from "@/features/saved-views/queries"
+import { getAvatarUrl } from "@/features/users/avatar"
 
+import { MemberFilterStack } from "./MemberFilterStack"
 import { ManageMembersDialog } from "./ManageMembersDialog"
 import { ProjectSettingsMenu } from "./ProjectSettingsMenu"
 import { ViewTabs } from "./ViewTabs"
@@ -146,6 +147,16 @@ export default async function ProjectPage({
   const canManage = PROJECT_ROLE_ORDER[myRole] >= PROJECT_ROLE_ORDER.MANAGER
 
   const members = project.memberships.map((m) => m.user)
+
+  // The header stack shows real avatars, so each member's private-bucket
+  // avatarKey has to become a short-lived presigned GET here on the server
+  // (getAvatarUrl memoises per key, so repeats across a render are free).
+  const memberFilterOptions = await Promise.all(
+    members.map(async (member) => ({
+      ...member,
+      avatarUrl: await getAvatarUrl(member.avatarKey),
+    })),
+  )
 
   // MANAGERs (and admins) can manage members from the project page — fetch the
   // detailed member list + assignable users only when that UI will render.
@@ -412,20 +423,10 @@ export default async function ProjectPage({
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
-          <div className="flex -space-x-2">
-            {members.slice(0, 5).map((member) => (
-              <AssigneeAvatar
-                key={member.id}
-                user={member}
-                className="rounded-full ring-2 ring-background"
-              />
-            ))}
-            {members.length > 5 ? (
-              <span className="flex size-6 items-center justify-center rounded-full border border-border bg-surface-raised text-[10px] text-muted-foreground ring-2 ring-background">
-                +{members.length - 5}
-              </span>
-            ) : null}
-          </div>
+          <MemberFilterStack
+            members={memberFilterOptions}
+            currentUserId={session.user.id}
+          />
           {canEdit ? (
             <LabelManager
               projectId={projectId}
