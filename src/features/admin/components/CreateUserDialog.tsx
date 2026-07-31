@@ -276,6 +276,7 @@ export function CreateUserDialog({
                             {selected ? (
                               <Select
                                 value={grants.get(project.id) ?? "MEMBER"}
+                                items={PROJECT_ROLE_LABEL}
                                 disabled={isPending}
                                 onValueChange={(v) =>
                                   v && setGrantRole(project.id, v as ProjectRole)

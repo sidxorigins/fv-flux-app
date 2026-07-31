@@ -128,6 +128,19 @@ export function CreateTaskDialog(props: CreateTaskDialogProps) {
   const members = multi ? (activeProject?.members ?? []) : props.members
   const labels = multi ? (activeProject?.labels ?? []) : props.labels
 
+  // Base UI's <Select.Value> renders the raw `value` unless Root is given an
+  // `items` value→label map — without these the trigger showed the bare cuid
+  // instead of the member's name (and the project id in multi-project mode).
+  const projectItems: Record<string, string> = multi
+    ? Object.fromEntries(
+        props.projects.map((p) => [p.id, `${p.key} · ${p.name}`]),
+      )
+    : {}
+  const assigneeItems: Record<string, string> = {
+    [UNASSIGNED]: "Unassigned",
+    ...Object.fromEntries(members.map((m) => [m.id, m.name])),
+  }
+
   function onProjectChange(id: string) {
     setSelectedProjectId(id)
     // Assignee/labels belong to the previous project — reset them.
@@ -221,6 +234,7 @@ export function CreateTaskDialog(props: CreateTaskDialogProps) {
                 <FieldContent>
                   <Select
                     value={selectedProjectId}
+                    items={projectItems}
                     disabled={isPending}
                     onValueChange={(v) => v && onProjectChange(v)}
                   >
@@ -307,6 +321,7 @@ export function CreateTaskDialog(props: CreateTaskDialogProps) {
                 <FieldContent>
                   <Select
                     value={assigneeId}
+                    items={assigneeItems}
                     disabled={isPending}
                     onValueChange={(v) => v && setAssigneeId(v)}
                   >
