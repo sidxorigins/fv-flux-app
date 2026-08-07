@@ -21,9 +21,10 @@
 // EMPTY-SCOPE GUARD: getTeamProductivity skips the task/time-entry aggregate
 // queries entirely when the team has no projects — returning zeroed
 // per-member stats WITHOUT ever running a Prisma `{ in: [] }` task query.
-// Availability (running-timer lookup) is NOT scoped to the team's projects
-// (a running timer on any task still counts as "working"), so it's fetched
-// unconditionally alongside the member list.
+// Availability (running timer OR an assigned IN_PROGRESS task) is NOT scoped to
+// the team's projects — work anywhere on the instance still counts as
+// "working" — so both lookups are fetched unconditionally alongside the member
+// list.
 
 import { prisma } from "@/lib/db";
 import { requireUser, AuthorizationError } from "@/lib/permissions";
@@ -104,6 +105,10 @@ export interface MemberProductivity {
   actualHours: number;
   /** Non-DONE tasks assigned to this member (todo + inProgress + inReview). */
   activeCount: number;
+  /** "working" if the member has a running timer OR any assigned task sitting
+   * in `IN_PROGRESS` — work in progress counts whether or not a timer was ever
+   * started. Both signals are instance-wide, not scoped to this team's
+   * projects. */
   availability: "working" | "idle";
 }
 
@@ -196,7 +201,7 @@ export async function getTeamProductivity(teamId: string): Promise<TeamProductiv
 
   const projectIds = team.projects.map((p) => p.projectId);
 
-  const [users, running] = await Promise.all([
+  const [users, running, inProgressAssignees] = await Promise.all([
     prisma.user.findMany({
       where: { id: { in: memberIds } },
       orderBy: { name: "asc" },
@@ -205,6 +210,14 @@ export async function getTeamProductivity(teamId: string): Promise<TeamProductiv
     prisma.timeEntry.findMany({
       where: { userId: { in: memberIds }, endedAt: null },
       select: { userId: true },
+    }),
+    // A task actively being worked counts as "working" even with no timer
+    // running — starting a timer is optional, so timer state alone would mark
+    // busy people idle. `distinct` keeps this one row per member, not per task.
+    prisma.task.findMany({
+      where: { assigneeId: { in: memberIds }, status: "IN_PROGRESS" },
+      select: { assigneeId: true },
+      distinct: ["assigneeId"],
     }),
   ]);
 
@@ -275,7 +288,12 @@ export async function getTeamProductivity(teamId: string): Promise<TeamProductiv
     actualByUser.map((g) => [g.userId, (g._sum.minutes ?? 0) / 60]),
   );
 
+  // Working = a live timer OR an in-progress assignment. Union, not either/or:
+  // a member with a timer on a task assigned to someone else still counts.
   const workingSet = new Set(running.map((r) => r.userId));
+  for (const t of inProgressAssignees) {
+    if (t.assigneeId) workingSet.add(t.assigneeId);
+  }
 
   const members: MemberProductivity[] = users.map((u) => {
     const statusCounts = countsByAssignee.get(u.id) ?? emptyStatusCounts();

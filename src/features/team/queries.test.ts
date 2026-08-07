@@ -97,10 +97,53 @@ beforeEach(() => {
   mockRequireUser.mockResolvedValue({ id: ME_ID, globalRole: "USER" });
   db.user.findMany.mockResolvedValue([]);
   db.timeEntry.findMany.mockResolvedValue([]);
+  db.task.findMany.mockResolvedValue([]);
   db.task.groupBy.mockResolvedValue([]);
   db.timeEntry.groupBy.mockResolvedValue([]);
   db.task.aggregate.mockResolvedValue({ _sum: {} });
   db.timeEntry.aggregate.mockResolvedValue({ _sum: {} });
+});
+
+describe("getTeamProductivity — availability", () => {
+  beforeEach(() => {
+    mockRequireUser.mockResolvedValue({ id: MEMBER_ID, globalRole: "ADMIN" });
+    db.team.findUnique.mockResolvedValue(baseTeam({ members: [{ userId: MEMBER_ID }] }));
+    db.user.findMany.mockResolvedValue([
+      { id: MEMBER_ID, name: "Mem", username: "mem" },
+    ]);
+  });
+
+  it("marks a member with an IN_PROGRESS task as working even with no timer running", async () => {
+    db.timeEntry.findMany.mockResolvedValue([]);
+    db.task.findMany.mockResolvedValue([{ assigneeId: MEMBER_ID }]);
+
+    const result = await getTeamProductivity(TEAM_ID);
+
+    expect(result.members[0].availability).toBe("working");
+    expect(db.task.findMany).toHaveBeenCalledWith({
+      where: { assigneeId: { in: [MEMBER_ID] }, status: "IN_PROGRESS" },
+      select: { assigneeId: true },
+      distinct: ["assigneeId"],
+    });
+  });
+
+  it("still marks a member with a running timer as working when nothing is IN_PROGRESS", async () => {
+    db.timeEntry.findMany.mockResolvedValue([{ userId: MEMBER_ID }]);
+    db.task.findMany.mockResolvedValue([]);
+
+    const result = await getTeamProductivity(TEAM_ID);
+
+    expect(result.members[0].availability).toBe("working");
+  });
+
+  it("marks a member with neither signal as idle", async () => {
+    db.timeEntry.findMany.mockResolvedValue([]);
+    db.task.findMany.mockResolvedValue([]);
+
+    const result = await getTeamProductivity(TEAM_ID);
+
+    expect(result.members[0].availability).toBe("idle");
+  });
 });
 
 describe("getTeamProductivity — visibility gate", () => {
