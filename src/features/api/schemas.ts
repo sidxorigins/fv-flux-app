@@ -23,6 +23,8 @@ export const apiUpdateTaskStatusSchema = z.object({ status: z.enum(TaskStatus) }
 
 export const apiStartTimerSchema = z.object({ taskId: id });
 export const apiListTasksQuerySchema = z.object({ projectId: id });
+/** `q` is an optional substring filter over name/username/email. */
+export const apiListUsersQuerySchema = z.object({ q: z.string().max(200).optional() });
 
 export type ApiCreateTaskInput = z.infer<typeof apiCreateTaskSchema>;
 export type ApiLogTimeInput = z.infer<typeof apiLogTimeSchema>;

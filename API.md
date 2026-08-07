@@ -49,6 +49,8 @@ API keys are secrets — treat them like passwords. **Never commit keys to versi
 
 **Per-project roles and memberships are NOT enforced by this API.** Endpoints validate only that the referenced project or task *exists*; they do not check the actor's `ProjectMembership` or `projectRole` (`MEMBER`, `VIEWER`, `MANAGER`) for that project. Every write is attributed to the key's actor user for audit purposes, but the key is not restricted to that user's normal web-app access.
 
+**A key can read the user directory.** `GET /users` returns every non-suspended user's name, username, email, and status — see that endpoint below. No password hashes, tokens, or R2 keys are ever exposed, but treat a key as granting read access to the org's staff directory.
+
 **The actor's global role is not enforced either.** A key minted for an `EXECUTIVE` actor — a read-only, org-wide visibility role in the web app — can still create tasks, change status, and log time through this API. Only the actor's *status* is checked: the account must be `ACTIVE` (a `SUSPENDED` or still-`INVITED` actor gets `403 actor_inactive`).
 
 This makes a key powerful: a leaked key can create tasks or log time in **every** project on the instance, regardless of the actor's actual project access or global role. Treat keys accordingly — **mint keys only through an admin**, and **revoke immediately** if a key is ever leaked or exposed.
@@ -121,18 +123,59 @@ curl -H "Authorization: Bearer flux_sk_YOUR_KEY" \
       "key": "OPS-42",
       "title": "Update billing logic",
       "status": "IN_PROGRESS",
-      "priority": "HIGH"
+      "priority": "HIGH",
+      "assigneeId": "user_abc",
+      "assignee": { "id": "user_abc", "name": "Ada Khan", "username": "ada" }
     },
     {
       "id": "task_112",
       "key": "OPS-43",
       "title": "Fix dashboard crash",
       "status": "TODO",
-      "priority": "URGENT"
+      "priority": "URGENT",
+      "assigneeId": null,
+      "assignee": null
     }
   ]
 }
 ```
+
+`assigneeId` is `null` and `assignee` is `null` on an unassigned task. Use `assigneeId` when you need the value to send back to the API (e.g. to mirror an assignment elsewhere); `assignee` is there so you don't need a second call to turn that id into a human name.
+
+---
+
+### GET /users
+
+Fetch the assignable-user directory. **This is how you resolve an `assigneeId`** — `POST /tasks` takes a user id, not a name or an email address, so look the person up here first.
+
+**Request:**
+```bash
+curl -H "Authorization: Bearer flux_sk_YOUR_KEY" \
+  "https://flux.foodverse.io/api/v1/users?q=ada"
+```
+
+**Query Parameters:**
+- `q` (optional): Case-insensitive substring filter matched against **name, username, and email**. Max 200 characters; a longer value returns `400 invalid_query`. Omit it to list everyone.
+
+**Response (200 OK):**
+```json
+{
+  "users": [
+    {
+      "id": "user_abc",
+      "name": "Ada Khan",
+      "username": "ada",
+      "email": "ada@example.com",
+      "status": "ACTIVE"
+    }
+  ]
+}
+```
+
+- **`id` is the value to pass as `assigneeId`.**
+- `status` is `ACTIVE` or `INVITED`. **Suspended users are excluded** — they can't be assigned work, matching the assignee pickers in the web app. `INVITED` users (invited but not yet registered) *are* listed and *can* be assigned, again matching the app.
+- Sorted by name (A–Z), capped at **200** rows, no pagination — use `q` to narrow rather than paging.
+- Password hashes, tokens, avatar R2 keys, and global roles are never returned.
 
 ---
 
@@ -161,7 +204,7 @@ curl -X POST \
 - `title` (string, required): Task title. Trimmed; 1–200 characters.
 - `type` (string, optional): One of `TASK`, `BUG`, `STORY`. Default: `TASK`.
 - `priority` (string, optional): One of `LOW`, `MEDIUM`, `HIGH`, `URGENT`. Default: `MEDIUM`.
-- `assigneeId` (string, optional, nullable): User ID to assign the task to. An unknown id returns `400 assignee_not_found`.
+- `assigneeId` (string, optional, nullable): User ID to assign the task to — get it from **`GET /users`** (see above). An unknown id returns `400 assignee_not_found`.
 - `description` (string, optional): Rich-text HTML, max 50,000 characters. **Sanitised server-side** before it is stored — scripts, event handlers, and disallowed tags are stripped, so what you read back may not be byte-identical to what you sent.
 
 **Not accepted by this endpoint:** `status` (new tasks are always created as `TODO` — use `PATCH /tasks/{id}` to move one), `dueDate`, `labels`, `parentId` (subtasks), and `estimatedHours`. Set those in the web app.
@@ -360,7 +403,7 @@ All errors are returned as JSON with `error` and `code` fields:
 |---|---|---|
 | 400 | `invalid_json` | Request body is not valid JSON. |
 | 400 | `invalid_input` | Body failed schema validation (Zod). |
-| 400 | `invalid_query` | A required query parameter is missing or malformed (e.g. `projectId`). |
+| 400 | `invalid_query` | A query parameter is missing or malformed (`projectId` on `GET /tasks`, an over-long `q` on `GET /users`). |
 | 400 | `assignee_not_found` | `POST /tasks` was called with an `assigneeId` that doesn't exist. |
 | 401 | `unauthenticated` | Missing, malformed, or unknown API key. |
 | 401 | `key_revoked` | The API key has been revoked. |
@@ -380,7 +423,7 @@ All errors are returned as JSON with `error` and `code` fields:
 
 ### Best Practices
 
-- **Cache project and task lists locally** to reduce API calls.
+- **Cache project, user, and task lists locally** to reduce API calls. The user directory in particular changes rarely — resolve `assigneeId` values once and keep them.
 - **Use long-lived API keys** for integrations; regenerate or rotate keys annually.
 - **Log all API errors** with the error code for debugging.
 - **Respect rate limits** — back off and retry with exponential jitter if you hit 429.
@@ -404,6 +447,31 @@ PROJECT_ID=$(echo $PROJECTS | jq -r '.projects[0].id')
 # Get tasks for the project
 curl -s -H "Authorization: Bearer $BEARER_TOKEN" \
   "https://flux.foodverse.io/api/v1/tasks?projectId=$PROJECT_ID" | jq .
+```
+
+### Resolve a person, then assign them a task
+
+`assigneeId` is an opaque id — start from the email or name you already have.
+
+```bash
+BEARER_TOKEN="flux_sk_YOUR_KEY"
+
+# Look the person up (matches name, username, or email)
+USER=$(curl -s -H "Authorization: Bearer $BEARER_TOKEN" \
+  "https://flux.foodverse.io/api/v1/users?q=ada@example.com")
+
+ASSIGNEE_ID=$(echo $USER | jq -r '.users[0].id')
+
+# Create the task assigned to them
+curl -s -X POST \
+  -H "Authorization: Bearer $BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectId": "proj_12345",
+    "title": "Review the Q3 supplier list",
+    "assigneeId": "'$ASSIGNEE_ID'"
+  }' \
+  https://flux.foodverse.io/api/v1/tasks | jq .
 ```
 
 ### Create a task and log time

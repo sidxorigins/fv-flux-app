@@ -16,7 +16,13 @@ export async function GET(request: Request): Promise<Response> {
     where: { projectId: parsed.data.projectId, parentId: null },
     orderBy: { position: "asc" },
     take: 200,
-    select: { id: true, key: true, title: true, status: true, priority: true },
+    // `assignee` is included so a caller can see who a task belongs to without a
+    // second lookup — `assigneeId` alone is opaque, and there is no other way to
+    // read a task's assignee through the API.
+    select: {
+      id: true, key: true, title: true, status: true, priority: true, assigneeId: true,
+      assignee: { select: { id: true, name: true, username: true } },
+    },
   });
   return apiOk({ tasks });
 }
