@@ -41,15 +41,17 @@ API keys are secrets — treat them like passwords. **Never commit keys to versi
 
 **Per-project roles and memberships are NOT enforced by this API.** Endpoints validate only that the referenced project or task *exists*; they do not check the actor's `ProjectMembership` or `projectRole` (`MEMBER`, `VIEWER`, `MANAGER`) for that project. Every write is attributed to the key's actor user for audit purposes, but the key is not restricted to that user's normal web-app access.
 
-This makes a key powerful: a leaked key can create tasks or log time in **every** project on the instance, regardless of the actor's actual project access. Treat keys accordingly — **mint keys only through an admin**, and **revoke immediately** if a key is ever leaked or exposed.
+**The actor's global role is not enforced either.** A key minted for an `EXECUTIVE` actor — a read-only, org-wide visibility role in the web app — can still create tasks, change status, and log time through this API. Only the actor's *status* is checked: the account must be `ACTIVE` (a `SUSPENDED` or still-`INVITED` actor gets `403 actor_inactive`).
+
+This makes a key powerful: a leaked key can create tasks or log time in **every** project on the instance, regardless of the actor's actual project access or global role. Treat keys accordingly — **mint keys only through an admin**, and **revoke immediately** if a key is ever leaked or exposed.
 
 ---
 
 ## Rate Limits
 
-- **Per-instance limit**: 120 requests per minute (per API key).
-- **Per-request limit**: Requests that exceed the per-key rate limit receive a 429 response.
-- Rate limit resets on a 60-second sliding window.
+- **120 requests per minute per API key**, counted on a 60-second sliding window keyed by the key's prefix.
+- Requests over the limit get a `429` with a `Retry in <n>s` message; a rejected request is **not** counted toward the window, so the window drains normally.
+- The limiter is **in-process and single-instance**: its state lives in server memory, resets on every restart/redeploy, and is not shared across horizontally-scaled instances. Treat the limit as abuse dampening, not a hard quota.
 
 ---
 
@@ -58,6 +60,8 @@ This makes a key powerful: a leaked key can create tasks or log time in **every*
 ### GET /projects
 
 Fetch **all projects** on the instance. A key is a global credential — this is not filtered to projects the actor is a member of (see **Key Scope** above).
+
+Sorted by name (A–Z). Returns at most **200** projects; there is no pagination.
 
 **Request:**
 ```bash
@@ -96,7 +100,9 @@ curl -H "Authorization: Bearer flux_sk_YOUR_KEY" \
 ```
 
 **Query Parameters:**
-- `projectId` (required): The project ID.
+- `projectId` (required): The project ID. A missing or empty value returns `400 invalid_query`; an unknown id returns `404 project_not_found`.
+
+**Scope of results:** top-level tasks only — **subtasks are excluded**. Sorted by board `position` (ascending). Returns at most **200** tasks; there is no pagination and no status/assignee/label filtering. Filter client-side, or fetch per project.
 
 **Response (200 OK):**
 ```json
@@ -144,11 +150,15 @@ curl -X POST \
 
 **Request Body:**
 - `projectId` (string, required): Project ID.
-- `title` (string, required): Task title.
+- `title` (string, required): Task title. Trimmed; 1–200 characters.
 - `type` (string, optional): One of `TASK`, `BUG`, `STORY`. Default: `TASK`.
 - `priority` (string, optional): One of `LOW`, `MEDIUM`, `HIGH`, `URGENT`. Default: `MEDIUM`.
-- `assigneeId` (string, optional): User ID to assign the task to.
-- `description` (string, optional): Rich-text description (HTML or ProseMirror JSON).
+- `assigneeId` (string, optional, nullable): User ID to assign the task to. An unknown id returns `400 assignee_not_found`.
+- `description` (string, optional): Rich-text HTML, max 50,000 characters. **Sanitised server-side** before it is stored — scripts, event handlers, and disallowed tags are stripped, so what you read back may not be byte-identical to what you sent.
+
+**Not accepted by this endpoint:** `status` (new tasks are always created as `TODO` — use `PATCH /tasks/{id}` to move one), `dueDate`, `labels`, `parentId` (subtasks), and `estimatedHours`. Set those in the web app.
+
+**Side effects:** the task key (`<PROJECT_KEY>-<n>`) is generated from the project's counter, the **reporter is the key's actor user**, the task is positioned at the end of the project's `TODO` column, and a `created` entry is written to the task's activity log.
 
 **Response (201 Created):**
 ```json
@@ -168,10 +178,12 @@ curl -X POST \
 
 ### PATCH /tasks/{id}
 
-Update a task's status. Attributed to the key's actor user. Global scope — any task.
+Update a task's status. Attributed to the key's actor user. Global scope — any task, including subtasks.
 
 **Request Body:**
 - `status` (string, required): One of `TODO`, `IN_PROGRESS`, `IN_REVIEW`, `DONE`.
+
+**Behaviour:** idempotent — sending the status the task already has returns `200` and changes nothing (no activity-log entry, no notification). A real change writes a `status_changed` activity entry and notifies the task's watchers (assignee, reporter, commenters); notification failures are swallowed and never fail the request. Status is the **only** mutable field on this endpoint — title, assignee, priority, due date, and labels are not editable via the API.
 
 **Response (200 OK):**
 ```json
@@ -218,10 +230,10 @@ curl -X POST \
 ```
 
 **Request Body:**
-- `taskId` (string, required): Task ID.
-- `minutes` (number, required): Duration in minutes (1–44640).
-- `note` (string, optional): Brief note about the work.
-- `spentAt` (string, optional): ISO 8601 timestamp when time was spent. Default: now.
+- `taskId` (string, required): Task ID (a subtask id is fine).
+- `minutes` (number, required): Whole minutes, 1–44,640 (31 days).
+- `note` (string, optional): Brief note about the work, max 1,000 characters.
+- `spentAt` (string, optional): ISO 8601 timestamp when time was spent. Default: now. Any `Date`-parseable string is coerced; an unparseable one returns `400 invalid_input`.
 
 **Response (201 Created):**
 ```json
@@ -344,7 +356,7 @@ All errors are returned as JSON with `error` and `code` fields:
 | 400 | `assignee_not_found` | `POST /tasks` was called with an `assigneeId` that doesn't exist. |
 | 401 | `unauthenticated` | Missing, malformed, or unknown API key. |
 | 401 | `key_revoked` | The API key has been revoked. |
-| 403 | `actor_inactive` | The key's user account is suspended. |
+| 403 | `actor_inactive` | The key's user account is not `ACTIVE` (suspended, or invited but never registered). |
 | 404 | `project_not_found` | The referenced project doesn't exist. |
 | 404 | `task_not_found` | The referenced task doesn't exist. |
 | 429 | `rate_limited` | Request rate limit exceeded. Wait and retry. |
@@ -439,8 +451,26 @@ curl -s -X POST \
 
 ---
 
+## Other HTTP Endpoints
+
+These are **not** part of the `/api/v1` key-authenticated surface — they do not accept `flux_sk_…` bearer tokens — but they are the only other HTTP routes Flux exposes, listed here so integrators know they exist.
+
+### GET /api/files/{attachmentId}
+
+Serves an attachment or inline comment image. Authenticated by the **browser session cookie**, not an API key; the caller must hold at least `VIEWER` on the attachment's project. Responds `302` to a short-lived presigned R2 URL — bytes never pass through the app server and the R2 object key is never exposed.
+
+- `?download=1` forces `Content-Disposition: attachment`; the default is inline so images render in comment bodies.
+- SVG and HTML attachments are **always** forced to download regardless of the flag — both can carry `<script>`, and serving them inline would let anyone who can attach a file host a live page on the Flux origin.
+- Errors: `401` (no session), `403` (no project access), `404` (unknown or malformed id).
+
+### GET|POST /api/cron/due-reminders
+
+Cron-triggered due-date reminder digest plus orphan draft-attachment sweep. Auth is a **shared secret only** — `CRON_SECRET` must be set and match either `Authorization: Bearer <secret>` or an `x-cron-secret` header (compared in constant time). If `CRON_SECRET` is unset the job never runs. Stateless: it keeps no "already reminded" record, so hit it at most once a day.
+
+---
+
 ## Support
 
 For API issues or requests, contact the Flux admin team or file an issue in the project.
 
-**Last updated:** 2026-07-20
+**Last updated:** 2026-08-07
