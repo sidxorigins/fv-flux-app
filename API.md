@@ -2,6 +2,14 @@
 
 Programmatic access to Flux for external agents, integrations, and scripts.
 
+**This document is published, unauthenticated, at <https://flux.foodverse.io/api-docs>** — raw Markdown, `text/markdown`, CORS open to any origin. Fetch it directly:
+
+```bash
+curl -s https://flux.foodverse.io/api-docs
+```
+
+It is generated from `API.md` in the Flux repo at build time, so the published copy always matches the deployed release.
+
 ## Base URL
 
 ```

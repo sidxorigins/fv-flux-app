@@ -36,6 +36,9 @@ function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith("/api/cron")) return true;
   // API v1 authenticates itself with a Bearer API key inside each handler.
   if (pathname.startsWith("/api/v1")) return true;
+  // Public API reference (raw Markdown of API.md). Documentation only — no data,
+  // no DB access — and integrators need to read it before they have a key.
+  if (pathname === "/api-docs") return true;
   return PUBLIC_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );

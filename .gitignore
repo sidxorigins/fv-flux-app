@@ -45,6 +45,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# generated from API.md by scripts/gen-api-docs.mjs (predev/prebuild)
+/src/features/docs/api-doc.generated.ts
+
 # prisma — generated client (regenerated via `prisma generate` / postinstall)
 /src/generated/
 .gstack/
