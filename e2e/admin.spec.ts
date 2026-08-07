@@ -15,6 +15,28 @@ test.describe("admin area", () => {
     await expect(page.getByText("it@iccadubai.ae").first()).toBeVisible();
   });
 
+  // The user id is what /api/v1 takes as `assigneeId`; it is surfaced nowhere
+  // else in the UI, so an admin wiring up an integration depends on these two
+  // affordances. Clipboard reads need a permission grant, so this asserts the
+  // menu item and the readable id rather than the clipboard contents.
+  test("a user's id is readable on their detail page and copyable from the row menu", async ({
+    page,
+  }) => {
+    await page.goto("/admin/users");
+
+    await page.getByRole("button", { name: "Actions for Flux Admin" }).click();
+    await expect(page.getByRole("menuitem", { name: "Copy user ID" })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("link", { name: /Flux Admin/ }).first().click();
+    await expect(page).toHaveURL(/\/admin\/users\/[a-z0-9]+$/);
+
+    const id = page.url().split("/").pop()!;
+    await expect(page.getByText("User ID")).toBeVisible();
+    await expect(page.getByText(id, { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy user ID" })).toBeVisible();
+  });
+
   test("project access page shows the seeded project and its members", async ({
     page,
   }) => {

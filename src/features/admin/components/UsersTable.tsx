@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { KeyRound, MoreHorizontal, Shield, UserCheck, UserX } from "lucide-react";
+import { Copy, KeyRound, MoreHorizontal, Shield, UserCheck, UserX } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -49,6 +49,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { GlobalRole } from "@/generated/prisma/enums";
+import { copyText } from "@/lib/clipboard";
 
 import { adminResetPassword, changeGlobalRole, setUserStatus } from "../actions";
 import type { AdminUserRow } from "../queries";
@@ -60,6 +61,11 @@ import {
   UserStatusBadge,
   initials,
 } from "./display";
+
+async function copyUserId(id: string): Promise<void> {
+  if (await copyText(id)) toast.success("User ID copied");
+  else toast.error("Couldn't copy — open the user's detail page to copy it.");
+}
 
 interface UsersTableProps {
   users: AdminUserRow[];
@@ -153,6 +159,13 @@ export function UsersTable({ users, currentUserId }: UsersTableProps) {
                     <DropdownMenuContent align="end" className="w-44">
                       <DropdownMenuItem render={<Link href={`/admin/users/${u.id}`} />}>
                         View detail
+                      </DropdownMenuItem>
+                      {/* The raw user id — what /api/v1 wants as `assigneeId`.
+                          Nothing else in the UI surfaces it, so an admin wiring
+                          up an integration had no way to read it. */}
+                      <DropdownMenuItem onClick={() => copyUserId(u.id)}>
+                        <Copy />
+                        Copy user ID
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => openAction({ type: "role", user: u })}>
                         <Shield />

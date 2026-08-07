@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { getProjects, getUser } from "@/features/admin/queries";
+import { CopyButton } from "@/features/admin/components/CopyButton";
 import { GrantAllProjectsButton } from "@/features/admin/components/GrantAllProjectsButton";
 import { MembershipEditor } from "@/features/admin/components/MembershipEditor";
 import {
@@ -54,6 +55,17 @@ export default async function AdminUserDetailPage({ params }: UserDetailPageProp
             {user.bio ? (
               <p className="mt-1 max-w-prose text-sm text-foreground/90">{user.bio}</p>
             ) : null}
+            {/* The user id, readable and copyable — it is the `assigneeId` the
+                REST API takes (see API.md), and nothing else in the UI shows
+                it. Selectable text as well as a copy control, so it still
+                works where the clipboard API is unavailable. */}
+            <div className="mt-2 flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">User ID</span>
+              <code className="rounded-md border border-border bg-surface px-1.5 py-0.5 font-mono text-xs break-all text-foreground select-all">
+                {user.id}
+              </code>
+              <CopyButton value={user.id} size="icon-sm" label="Copy user ID" />
+            </div>
           </div>
         </div>
         <p className="text-xs text-muted-foreground">Joined {user.createdAtLabel}</p>

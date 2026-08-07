@@ -5,6 +5,7 @@ import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 
 interface CopyButtonProps {
@@ -36,15 +37,14 @@ export function CopyButton({
   }, []);
 
   async function onCopy() {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      toast.success("Copied");
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setCopied(false), 1500);
-    } catch {
+    if (!(await copyText(value))) {
       toast.error("Couldn't copy — copy it manually.");
+      return;
     }
+    setCopied(true);
+    toast.success("Copied");
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), 1500);
   }
 
   const Icon = copied ? Check : Copy;
