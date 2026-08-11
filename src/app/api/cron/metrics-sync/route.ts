@@ -47,13 +47,26 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   }
 
   // GA4 and the store APIs are independent: a broken Apple key must not stop
-  // web analytics refreshing, and vice versa. Both run, both report.
+  // web analytics refreshing, and vice versa. All run, all report.
   const [ga4, stores] = await Promise.all([syncGa4Metrics(), syncStoreInstalls()]);
 
-  const ok = ga4.ok && stores.play.ok && stores.appStore.ok;
-  // Failures are surfaced as 502 so the timer's logs show them, but the board
-  // keeps serving the last good snapshot either way.
-  return NextResponse.json({ ok, ga4, stores }, { status: ok ? 200 : 502 });
+  const storeFailures = Object.entries(stores)
+    .filter(([, r]) => !r.ok)
+    .map(([name]) => name);
+
+  // HTTP status reflects the CORE sync only.
+  //
+  // A store credential can be legitimately pending for days (a Play Console
+  // permission takes up to 24h to reach the storage bucket). If that returned
+  // non-2xx, the systemd timer would sit permanently failed and a REAL outage
+  // would look identical to the known-pending one. Store problems are reported
+  // in the body and visible via `degraded`; only a GA4 failure — which empties
+  // the board — is worth failing the job over.
+  const degraded = storeFailures.length > 0;
+  return NextResponse.json(
+    { ok: ga4.ok, degraded, degradedSources: storeFailures, ga4, stores },
+    { status: ga4.ok ? 200 : 502 },
+  );
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
