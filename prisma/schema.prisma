@@ -60,47 +60,48 @@ enum TaskPriority {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
-  id              String     @id @default(cuid())
-  name            String
+  id                String     @id @default(cuid())
+  name              String
   // Stored lowercase-normalised; format validation happens in Zod at the boundary.
-  username        String     @unique
-  email           String     @unique
-  hashedPassword  String?
-  globalRole      GlobalRole @default(USER)
-  status          UserStatus @default(ACTIVE)
-  bio             String?
-  avatarKey       String?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  tourCompletedAt DateTime?
+  username          String     @unique
+  email             String     @unique
+  hashedPassword    String?
+  globalRole        GlobalRole @default(USER)
+  status            UserStatus @default(ACTIVE)
+  bio               String?
+  avatarKey         String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  tourCompletedAt   DateTime?
   // Watermark for session revocation: a JWT issued before this instant is no
   // longer honoured (see requireUser in lib/permissions.ts). Null until the
   // user's first password reset.
   passwordChangedAt DateTime?
 
   // Relations
-  projectsLed        Project[]           @relation("ProjectLead")
-  memberships        ProjectMembership[]
-  invitesSent        Invite[]            @relation("InviteInvitedBy")
-  assignedTasks      Task[]              @relation("TaskAssignee")
-  reportedTasks      Task[]              @relation("TaskReporter")
-  comments           Comment[]
-  commentReactions   CommentReaction[]
-  attachments        Attachment[]
-  auditLogs          AuditLog[]
-  activityLogs       ActivityLog[]
-  notifications      Notification[]      @relation("NotificationRecipient")
-  actedNotifications Notification[]      @relation("NotificationActor")
-  watchedTasks       TaskWatcher[]
-  savedViews         SavedView[]
-  timeEntries        TimeEntry[]
-  apiKeys            ApiKey[]            @relation("ApiKeyActor")
-  apiKeysCreated     ApiKey[]            @relation("ApiKeyCreatedBy")
-  managedTeams       Team[]              @relation("TeamManager")
-  teamMemberships    TeamMembership[]
-  projectLeads       ProjectLead[]
-  savedFilters       SavedFilter[]
+  projectsLed         Project[]            @relation("ProjectLead")
+  memberships         ProjectMembership[]
+  invitesSent         Invite[]             @relation("InviteInvitedBy")
+  assignedTasks       Task[]               @relation("TaskAssignee")
+  reportedTasks       Task[]               @relation("TaskReporter")
+  comments            Comment[]
+  commentReactions    CommentReaction[]
+  attachments         Attachment[]
+  auditLogs           AuditLog[]
+  activityLogs        ActivityLog[]
+  notifications       Notification[]       @relation("NotificationRecipient")
+  actedNotifications  Notification[]       @relation("NotificationActor")
+  watchedTasks        TaskWatcher[]
+  savedViews          SavedView[]
+  timeEntries         TimeEntry[]
+  apiKeys             ApiKey[]             @relation("ApiKeyActor")
+  apiKeysCreated      ApiKey[]             @relation("ApiKeyCreatedBy")
+  managedTeams        Team[]               @relation("TeamManager")
+  teamMemberships     TeamMembership[]
+  projectLeads        ProjectLead[]
+  savedFilters        SavedFilter[]
   passwordResetTokens PasswordResetToken[]
+  displayTokens       DisplayToken[]       @relation("DisplayTokenCreatedBy")
 }
 
 model Project {
@@ -176,18 +177,18 @@ model PasswordResetToken {
 }
 
 model Task {
-  id          String       @id @default(cuid())
-  projectId   String
-  key         String       @unique
-  title       String
+  id             String       @id @default(cuid())
+  projectId      String
+  key            String       @unique
+  title          String
   // Sanitised HTML (project's chosen rich-text persistence format).
-  description String?
-  type        TaskType     @default(TASK)
-  status      TaskStatus   @default(TODO)
-  priority    TaskPriority @default(MEDIUM)
-  assigneeId  String?
-  reporterId  String
-  parentId    String?
+  description    String?
+  type           TaskType     @default(TASK)
+  status         TaskStatus   @default(TODO)
+  priority       TaskPriority @default(MEDIUM)
+  assigneeId     String?
+  reporterId     String
+  parentId       String?
   // Fractional-index / midpoint ordering value for the board.
   position       Float
   dueDate        DateTime?
@@ -239,8 +240,8 @@ model Comment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  task        Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  author      User             @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  task        Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author      User              @relation(fields: [authorId], references: [id], onDelete: Restrict)
   attachments Attachment[]
   reactions   CommentReaction[]
 
@@ -452,6 +453,7 @@ model Team {
   manager  User?            @relation("TeamManager", fields: [managerId], references: [id], onDelete: SetNull)
   members  TeamMembership[]
   projects TeamProject[]
+
   @@index([managerId])
 }
 
@@ -460,8 +462,9 @@ model TeamMembership {
   teamId    String
   userId    String
   createdAt DateTime @default(now())
-  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([teamId, userId])
   @@index([userId])
 }
@@ -472,8 +475,9 @@ model TeamProject {
   projectId String
   role      ProjectRole @default(MEMBER)
   createdAt DateTime    @default(now())
-  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team      Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
   @@unique([teamId, projectId])
   @@index([projectId])
 }
@@ -483,8 +487,9 @@ model ProjectLead {
   projectId String
   userId    String
   createdAt DateTime @default(now())
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([projectId, userId])
   @@index([userId])
 }
@@ -508,4 +513,100 @@ model SavedFilter {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Product analytics — cached GA4 metrics for the admin wall board
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum MetricGrain {
+  // A point-in-time reading (GA4 realtime: active users in the last 30 min).
+  // `periodStart` is the capture instant, truncated to the minute.
+  INSTANT
+  // One calendar day in the SOURCE property's timezone (Asia/Calcutta here,
+  // not the office's). `periodStart` is that day's 00:00 UTC-normalised date.
+  DAY
+}
+
+// A single cached metric reading pulled from an external analytics source.
+//
+// WHY THIS EXISTS: the office wall board refreshes every ~20s. Hitting the GA4
+// Data API on every render would be ~4,300 calls/day and blow the property's
+// realtime token quota. The cron sync writes here; every read path serves from
+// here. That also means a Google outage shows a slightly stale number instead
+// of a blank panel, and we accumulate history independent of GA4's own
+// retention window.
+//
+// Deliberately source-agnostic (`source` + `scope`) so a second property — or
+// a non-GA4 source entirely — is a config row, not a schema change.
+model MetricSnapshot {
+  id     String @id @default(cuid())
+  // Origin system, e.g. "ga4". Paired with `scope` to disambiguate.
+  source String
+  // Slice within the source: "web" | "app" | "all" (platform split), so the
+  // board can show website and app side by side from one property.
+  scope  String
+  // Metric key in OUR vocabulary, not the vendor's — e.g. "activeUsers1d".
+  // Insulates the UI from GA4 metric renames.
+  metric String
+  value  Float
+
+  // Optional breakdown, e.g. dimension "country" / dimensionValue "India".
+  // EMPTY STRING, not null, for un-broken-down scalar rows: Postgres treats
+  // NULLs as distinct in a unique index, so nullable columns here would
+  // silently defeat the uniqueness that makes the sync idempotent.
+  dimension      String @default("")
+  dimensionValue String @default("")
+
+  grain       MetricGrain
+  // What the value DESCRIBES (see MetricGrain), not when it was fetched.
+  periodStart DateTime
+  // When we actually pulled it — drives the "as of HH:MM" staleness badge.
+  capturedAt  DateTime    @default(now())
+
+  // Re-running the sync for the same period must overwrite, not duplicate:
+  // the sync upserts on this key, so it is safely idempotent and a retry
+  // after a partial failure self-heals.
+  @@unique([source, scope, metric, dimension, dimensionValue, grain, periodStart])
+  // Serves the board's "last N days of metric X" reads.
+  @@index([metric, grain, periodStart])
+  // Serves the breakdown cards (top countries / channels / devices).
+  @@index([dimension, grain, periodStart])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wall-display access tokens
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A signed, revocable, READ-ONLY credential for the office wall board.
+ * WHY THIS EXISTS: /display is admin-gated, which would mean the mini PC
+ * driving the TV holds a live admin session indefinitely — a browser nobody
+ * locks, in a room anyone walks through. This grants exactly one capability
+ * (render the analytics board) and can be revoked in one click without
+ * touching anyone's account.
+ * Mirrors ApiKey deliberately (prefix + sha256 hash, plaintext shown once,
+ * revocation by timestamp) so there is one auth-credential pattern in the
+ * codebase, not two.
+ */
+model DisplayToken {
+  id          String    @id @default(cuid())
+  name        String
+  /**
+   * First 16 chars — safe to show in listings so a token is identifiable
+   * without storing anything that could be replayed.
+   */
+  prefix      String    @unique
+  tokenHash   String    @unique
+  createdById String
+  lastUsedAt  DateTime?
+  /**
+   * Set to revoke. Never deleted, so the audit trail survives.
+   */
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  createdBy User @relation("DisplayTokenCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([createdById])
 }
