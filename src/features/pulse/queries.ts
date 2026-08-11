@@ -114,7 +114,18 @@ export interface OrgPulse {
  */
 export async function getOrgPulse(): Promise<OrgPulse> {
   await requireAdmin();
+  return loadOrgPulse();
+}
 
+/**
+ * The query itself, WITHOUT an auth check.
+ *
+ * Split out so the wall board (/display) can call it after validating its own
+ * DisplayToken — that route is not admin-session-gated, and calling
+ * requireAdmin() there would reject the very credential it is meant to accept.
+ * Anything calling this MUST have authorised the caller already.
+ */
+export async function loadOrgPulse(): Promise<OrgPulse> {
   const now = new Date();
   const weekStart = startOfIsoWeek(now);
 

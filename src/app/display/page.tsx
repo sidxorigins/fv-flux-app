@@ -2,8 +2,11 @@ import { redirect } from "next/navigation";
 
 import { DisplayBoard } from "@/features/analytics/components/DisplayBoard";
 import { DisplayRefresher } from "@/features/analytics/components/DisplayRefresher";
+import { DisplayRotator } from "@/features/analytics/components/DisplayRotator";
 import { verifyDisplayToken } from "@/features/analytics/displayAuth";
 import { getDisplayMetrics } from "@/features/analytics/displayQueries";
+import { PulseWallBoard } from "@/features/pulse/components/PulseWallBoard";
+import { loadOrgPulse } from "@/features/pulse/queries";
 import { AuthorizationError, requireAdmin } from "@/lib/permissions";
 
 // Always live — reads MetricSnapshot (two indexed queries), never GA4.
@@ -13,9 +16,9 @@ export default async function DisplayPage({
   searchParams,
 }: {
   // Next 16: searchParams is async and must be awaited.
-  searchParams: Promise<{ token?: string }>;
+  searchParams: Promise<{ token?: string; screen?: string; interval?: string }>;
 }) {
-  const { token } = await searchParams;
+  const { token, screen, interval } = await searchParams;
 
   // A DisplayToken is checked FIRST so the wall-mounted mini PC never needs a
   // logged-in admin session sitting in an unattended browser. Falls back to an
@@ -32,13 +35,36 @@ export default async function DisplayPage({
     }
   }
 
-  const data = await getDisplayMetrics();
+  // Both panes are fetched server-side in one pass so rotating between them
+  // costs nothing at runtime — no fetch, no spinner, no flash.
+  const [metrics, pulse] = await Promise.all([getDisplayMetrics(), loadOrgPulse()]);
+
+  const allPanes = [
+    { key: "analytics", node: <DisplayBoard data={metrics} /> },
+    { key: "pulse", node: <PulseWallBoard data={pulse} /> },
+  ];
+
+  // ?screen=analytics|pulse pins a single pane — useful for a second screen
+  // that should only ever show one, and for debugging a specific board.
+  const panes = screen
+    ? allPanes.filter((p) => p.key === screen)
+    : allPanes;
+
+  // ?interval=30 overrides the rotation period. Clamped so a typo can't leave
+  // the wall stuck on one pane or strobing.
+  const parsed = Number(interval);
+  const rotationSeconds = Number.isFinite(parsed)
+    ? Math.min(Math.max(parsed, 5), 300)
+    : 20;
 
   return (
     <>
       {/* Re-fetches on an interval and keeps the screen awake. */}
       <DisplayRefresher intervalSeconds={60} />
-      <DisplayBoard data={data} />
+      <DisplayRotator
+        panes={panes.length > 0 ? panes : allPanes}
+        intervalSeconds={rotationSeconds}
+      />
     </>
   );
 }
