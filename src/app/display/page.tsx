@@ -37,7 +37,13 @@ export default async function DisplayPage({
 
   // Both panes are fetched server-side in one pass so rotating between them
   // costs nothing at runtime — no fetch, no spinner, no flash.
-  const [metrics, pulse] = await Promise.all([getDisplayMetrics(), loadOrgPulse()]);
+  const [metrics, pulse] = await Promise.all([
+    getDisplayMetrics(),
+    // The wall board is about who is doing what, so the bootstrap @admin
+    // account is left out — it owns setup tasks and would otherwise occupy a
+    // tile that belongs to a real member of the team.
+    loadOrgPulse({ includeSystemAccounts: false }),
+  ]);
 
   const allPanes = [
     { key: "analytics", node: <DisplayBoard data={metrics} /> },

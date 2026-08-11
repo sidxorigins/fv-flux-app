@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 // silently clips the last row is worse than one that says "+4 more". Cards are
 // already sorted working-first by sortPulseCards, so the cap drops the least
 // interesting people, not arbitrary ones.
-const MAX_CARDS = 10;
+const MAX_CARDS = 15;
 
 /**
  * Grid shape for a given number of tiles.
@@ -30,7 +30,11 @@ function gridShape(count: number): { cols: number; rows: number } {
   if (count <= 4) return { cols: 2, rows: 2 };
   if (count <= 6) return { cols: 3, rows: 2 };
   if (count <= 8) return { cols: 4, rows: 2 };
-  return { cols: 5, rows: 2 };
+  if (count <= 10) return { cols: 5, rows: 2 };
+  // Three rows so a whole team fits rather than hiding a third of it behind
+  // "+N more" — on a team board the people you can't see are the point.
+  if (count <= 12) return { cols: 4, rows: 3 };
+  return { cols: 5, rows: 3 };
 }
 
 function initialsOf(name: string): string {

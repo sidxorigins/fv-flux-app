@@ -33,6 +33,17 @@ import {
 import type { TaskPriority, TaskStatus } from "@/generated/prisma/enums";
 
 const OPEN_STATUSES = ["TODO", "IN_PROGRESS", "IN_REVIEW"] as const;
+
+/**
+ * Accounts that are not people.
+ *
+ * `@admin` is the seeded bootstrap account. It legitimately owns tasks (setup
+ * work), so it sorts onto the wall board like a colleague and takes a tile away
+ * from an actual member of the team. The admin-facing /admin/pulse still lists
+ * it — an admin auditing access should see every account — but the office wall
+ * is about who is doing what, so it is filtered there.
+ */
+export const SYSTEM_USERNAMES = ["admin"] as const;
 const COMPLETION_LOG = { field: "status", newValue: "DONE" } as const;
 
 function round1(n: number): number {
@@ -125,12 +136,20 @@ export async function getOrgPulse(): Promise<OrgPulse> {
  * requireAdmin() there would reject the very credential it is meant to accept.
  * Anything calling this MUST have authorised the caller already.
  */
-export async function loadOrgPulse(): Promise<OrgPulse> {
+export async function loadOrgPulse(
+  options: { includeSystemAccounts?: boolean } = {},
+): Promise<OrgPulse> {
+  const { includeSystemAccounts = true } = options;
   const now = new Date();
   const weekStart = startOfIsoWeek(now);
 
   const users = await prisma.user.findMany({
-    where: { status: "ACTIVE" },
+    where: {
+      status: "ACTIVE",
+      ...(includeSystemAccounts
+        ? {}
+        : { username: { notIn: [...SYSTEM_USERNAMES] } }),
+    },
     orderBy: { name: "asc" },
     select: { id: true, name: true, username: true, avatarKey: true },
   });
