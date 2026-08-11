@@ -27,6 +27,12 @@
 .DS_Store
 *.pem
 
+# service-account / credential keys — NEVER commit. Values belong in .env only.
+*-key.json
+*-credentials.json
+*service-account*.json
+gcp-*.json
+
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -52,3 +58,7 @@ next-env.d.ts
 /src/generated/
 .gstack/
 .prisma/
+
+# Manually-downloaded Play Console install reports — data exports, not source.
+# Superseded by the automated GCS bucket sync once its permission propagates.
+/foodverse-app-downloads-reports/
