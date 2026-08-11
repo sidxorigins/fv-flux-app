@@ -50,12 +50,17 @@ export default async function DisplayPage({
     ? allPanes.filter((p) => p.key === screen)
     : allPanes;
 
-  // ?interval=30 overrides the rotation period. Clamped so a typo can't leave
+  // ?interval=N overrides the rotation period. Clamped so a typo can't leave
   // the wall stuck on one pane or strobing.
+  //
+  // Default 60s: long enough to actually read a board across a room before it
+  // moves on. Coinciding with the 60s data refresh is harmless — router.refresh()
+  // patches the tree in place rather than remounting, so a refresh landing
+  // mid-rotation causes no visible disruption.
   const parsed = Number(interval);
   const rotationSeconds = Number.isFinite(parsed)
     ? Math.min(Math.max(parsed, 5), 300)
-    : 20;
+    : 60;
 
   return (
     <>

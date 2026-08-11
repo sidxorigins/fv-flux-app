@@ -17,7 +17,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 export function DisplayRotator({
   panes,
-  intervalSeconds = 20,
+  intervalSeconds = 60,
 }: {
   panes: { key: string; node: ReactNode }[];
   intervalSeconds?: number;
