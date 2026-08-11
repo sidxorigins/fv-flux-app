@@ -1,29 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 
-// Keeps the wall board current without a full page reload.
+// Holds a screen Wake Lock so the mini PC driving the TV never blanks.
 //
-// router.refresh() re-runs the Server Component and patches the tree in place,
-// so the screen never flashes white and scroll/DOM state is preserved — a hard
-// location.reload() on a TV is visibly jarring every minute.
+// Data refreshing lives in DisplayRotator, which fires it on every rotation so
+// each incoming screen carries fresh numbers. This component does one thing.
 //
-// Also holds a Wake Lock so the mini PC doesn't blank the screen. The API is
-// only available over HTTPS/localhost and can be rejected, so every call is
-// guarded; failure just means the OS screensaver settings do the work instead.
+// The Wake Lock API is only available over HTTPS/localhost and can be rejected,
+// so every call is guarded; failure just means the OS screensaver settings do
+// the work instead.
 
-export function DisplayRefresher({
-  intervalSeconds = 60,
-}: {
-  intervalSeconds?: number;
-}) {
-  const router = useRouter();
-
-  useEffect(() => {
-    const id = setInterval(() => router.refresh(), intervalSeconds * 1000);
-    return () => clearInterval(id);
-  }, [router, intervalSeconds]);
+export function DisplayWakeLock() {
 
   useEffect(() => {
     let lock: WakeLockSentinel | null = null;

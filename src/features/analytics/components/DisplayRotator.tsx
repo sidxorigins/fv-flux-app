@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 
 // Rotates the wall board between panes on a fixed interval.
 //
@@ -11,9 +12,18 @@ import { useEffect, useState, type ReactNode } from "react";
 // Only `opacity` is animated (no layout properties), per CLAUDE.md's motion
 // rules. `prefers-reduced-motion` gets an instant cut rather than a fade.
 //
-// The interval timer is NOT reset by the parent's 60s data refresh, because
-// router.refresh() patches the tree in place rather than remounting — so
-// rotation stays on a steady 20s cadence regardless of when data lands.
+// Rotation ALSO drives the data refresh: every tick advances the pane and calls
+// router.refresh(), so the screen coming into view always carries fresh numbers
+// rather than whatever was fetched up to a minute earlier.
+//
+// The refresh fires at the same instant as the switch. router.refresh() patches
+// the tree in place rather than remounting, so new data lands mid-crossfade —
+// no flash, no reset of this component's own state, and the timer is unaffected
+// by the re-render.
+//
+// Reads hit MetricSnapshot and the local database, never the GA4/store APIs, so
+// a short interval costs a handful of indexed queries rather than external
+// quota. The cron sync remains the only thing that talks to Google or Apple.
 
 export function DisplayRotator({
   panes,
@@ -22,16 +32,20 @@ export function DisplayRotator({
   panes: { key: string; node: ReactNode }[];
   intervalSeconds?: number;
 }) {
+  const router = useRouter();
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
-    if (panes.length < 2) return;
-    const id = setInterval(
-      () => setIndex((i) => (i + 1) % panes.length),
-      intervalSeconds * 1000,
-    );
+    const id = setInterval(() => {
+      // Advance only when there is somewhere to advance to. With a single pane
+      // (?screen=analytics) the tick still refreshes, so a pinned screen stays
+      // just as current as a rotating one.
+      if (panes.length > 1) setIndex((i) => (i + 1) % panes.length);
+      router.refresh();
+    }, intervalSeconds * 1000);
+
     return () => clearInterval(id);
-  }, [panes.length, intervalSeconds]);
+  }, [panes.length, intervalSeconds, router]);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">

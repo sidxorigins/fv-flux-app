@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { DisplayBoard } from "@/features/analytics/components/DisplayBoard";
-import { DisplayRefresher } from "@/features/analytics/components/DisplayRefresher";
+import { DisplayWakeLock } from "@/features/analytics/components/DisplayWakeLock";
 import { DisplayRotator } from "@/features/analytics/components/DisplayRotator";
 import { verifyDisplayToken } from "@/features/analytics/displayAuth";
 import { getDisplayMetrics } from "@/features/analytics/displayQueries";
@@ -71,8 +71,9 @@ export default async function DisplayPage({
 
   return (
     <>
-      {/* Re-fetches on an interval and keeps the screen awake. */}
-      <DisplayRefresher intervalSeconds={60} />
+      {/* Keeps the TV awake. Data refreshing is driven by the rotator, so it
+          happens on every screen change rather than on a separate clock. */}
+      <DisplayWakeLock />
       <DisplayRotator
         panes={panes.length > 0 ? panes : allPanes}
         intervalSeconds={rotationSeconds}
