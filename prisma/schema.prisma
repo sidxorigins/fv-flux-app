@@ -73,6 +73,11 @@ model User {
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
   tourCompletedAt   DateTime?
+  /// Whether this user appears on the /display office wall board.
+  /// Admin-configurable at /admin/display. Defaults true so a new joiner shows
+  /// up without anyone remembering to enable them; the bootstrap @admin account
+  /// is switched off by the migration that adds this column.
+  showOnWallBoard   Boolean    @default(true)
   // Watermark for session revocation: a JWT issued before this instant is no
   // longer honoured (see requireUser in lib/permissions.ts). Null until the
   // user's first password reset.

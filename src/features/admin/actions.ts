@@ -54,6 +54,7 @@ import {
   teamVisibilitySchema,
   updateMembershipSchema,
   updateTeamSchema,
+  setWallBoardVisibilitySchema,
 } from "./schemas";
 
 export type ActionResult<T = undefined> =
@@ -1573,6 +1574,54 @@ export async function setPrimaryLead(input: unknown): Promise<ActionResult> {
     });
 
     revalidateLeads(projectId);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err) };
+  }
+}
+
+/**
+ * Show or hide a user on the /display office wall board.
+ *
+ * Replaces a hardcoded username exclusion list. Purely presentational — it
+ * changes nothing about the user's access, role or tasks, so there is no
+ * lockout risk and no reason to guard the "last one" the way role changes do.
+ * Still admin-only and still audited: a name silently vanishing from an office
+ * wall is exactly the kind of change someone will later ask about.
+ */
+export async function setWallBoardVisibility(input: unknown): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+
+    const parsed = setWallBoardVisibilitySchema.safeParse(input);
+    if (!parsed.success) return { ok: false, error: "Invalid input." };
+    const { userId, visible } = parsed.data;
+
+    const target = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, showOnWallBoard: true },
+    });
+    if (!target) return { ok: false, error: "User not found." };
+    if (target.showOnWallBoard === visible) return { ok: true }; // idempotent
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { showOnWallBoard: visible },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: visible ? "WALL_BOARD_SHOW" : "WALL_BOARD_HIDE",
+          targetType: "USER",
+          targetId: userId,
+          metadata: { name: target.name, showOnWallBoard: visible },
+        },
+      });
+    });
+
+    revalidatePath("/admin/display");
+    revalidatePath("/display");
     return { ok: true };
   } catch (err) {
     return { ok: false, error: friendlyAuthError(err) };

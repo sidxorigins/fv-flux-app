@@ -39,10 +39,8 @@ export default async function DisplayPage({
   // costs nothing at runtime — no fetch, no spinner, no flash.
   const [metrics, pulse] = await Promise.all([
     getDisplayMetrics(),
-    // The wall board is about who is doing what, so the bootstrap @admin
-    // account is left out — it owns setup tasks and would otherwise occupy a
-    // tile that belongs to a real member of the team.
-    loadOrgPulse({ includeSystemAccounts: false }),
+    // Respects the per-user toggle configured at /admin/display.
+    loadOrgPulse({ includeHiddenFromWallBoard: false }),
   ]);
 
   const allPanes = [

@@ -34,16 +34,10 @@ import type { TaskPriority, TaskStatus } from "@/generated/prisma/enums";
 
 const OPEN_STATUSES = ["TODO", "IN_PROGRESS", "IN_REVIEW"] as const;
 
-/**
- * Accounts that are not people.
- *
- * `@admin` is the seeded bootstrap account. It legitimately owns tasks (setup
- * work), so it sorts onto the wall board like a colleague and takes a tile away
- * from an actual member of the team. The admin-facing /admin/pulse still lists
- * it — an admin auditing access should see every account — but the office wall
- * is about who is doing what, so it is filtered there.
- */
-export const SYSTEM_USERNAMES = ["admin"] as const;
+// Wall-board visibility used to be a hardcoded username list here. It is now
+// the User.showOnWallBoard column, configurable at /admin/display — the set of
+// people worth putting on an office wall is an operational decision, not
+// something that should need a deploy to change.
 const COMPLETION_LOG = { field: "status", newValue: "DONE" } as const;
 
 function round1(n: number): number {
@@ -137,18 +131,18 @@ export async function getOrgPulse(): Promise<OrgPulse> {
  * Anything calling this MUST have authorised the caller already.
  */
 export async function loadOrgPulse(
-  options: { includeSystemAccounts?: boolean } = {},
+  options: { includeHiddenFromWallBoard?: boolean } = {},
 ): Promise<OrgPulse> {
-  const { includeSystemAccounts = true } = options;
+  const { includeHiddenFromWallBoard = true } = options;
   const now = new Date();
   const weekStart = startOfIsoWeek(now);
 
   const users = await prisma.user.findMany({
     where: {
       status: "ACTIVE",
-      ...(includeSystemAccounts
-        ? {}
-        : { username: { notIn: [...SYSTEM_USERNAMES] } }),
+      // Admin-configured per user. /admin/pulse passes true so an admin sees
+      // every account; the wall board passes false.
+      ...(includeHiddenFromWallBoard ? {} : { showOnWallBoard: true }),
     },
     orderBy: { name: "asc" },
     select: { id: true, name: true, username: true, avatarKey: true },

@@ -196,3 +196,9 @@ export type TeamProjectRoleInput = z.infer<typeof teamProjectRoleSchema>;
 export type TeamProjectRemoveInput = z.infer<typeof teamProjectRemoveSchema>;
 export type ProjectLeadInput = z.infer<typeof projectLeadSchema>;
 export type SetPrimaryLeadInput = z.infer<typeof setPrimaryLeadSchema>;
+
+/** Toggle whether a user appears on the /display office wall board. */
+export const setWallBoardVisibilitySchema = z.object({
+  userId: z.string().min(1),
+  visible: z.boolean(),
+});
