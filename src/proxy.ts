@@ -39,6 +39,12 @@ function isPublicPath(pathname: string): boolean {
   // Public API reference (raw Markdown of API.md). Documentation only — no data,
   // no DB access — and integrators need to read it before they have a key.
   if (pathname === "/api-docs") return true;
+  // Wall board: authenticates ITSELF inside the page, either with a
+  // DisplayToken query param (the office mini PC, which must not hold an admin
+  // session) or by falling back to requireAdmin(). It has to bypass the session
+  // gate here or the token never gets a chance to be checked — same reasoning
+  // as /api/cron above. Bypassing the proxy does NOT make it unauthenticated.
+  if (pathname === "/display") return true;
   return PUBLIC_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
