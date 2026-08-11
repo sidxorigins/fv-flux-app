@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import { Switch } from "@/components/ui/switch";
 import { setWallBoardVisibility } from "@/features/admin/actions";
 import type { WallBoardUser } from "@/features/admin/display/queries";
-import { cn } from "@/lib/utils";
 
 // Client component: each row toggles independently and optimistically, so
 // flipping several people in a row doesn't mean waiting on a round-trip each
@@ -99,32 +99,16 @@ export function WallBoardUserList({ users }: { users: WallBoardUser[] }) {
                 </span>
               </div>
 
-              <button
-                type="button"
-                role="switch"
-                aria-checked={visible}
-                aria-label={`Show ${user.name} on the wall board`}
+              {/* The shared shadcn/base-ui primitive, not a hand-rolled button:
+                  it already handles the thumb, focus ring, disabled state and
+                  dark-mode thumb colour, and it keeps this switch identical to
+                  the ones on /admin/teams and /explore. */}
+              <Switch
+                checked={visible}
                 disabled={busy[user.id] ?? false}
-                onClick={() => void toggle(user)}
-                className={cn(
-                  "relative h-6 w-11 shrink-0 cursor-pointer rounded-full",
-                  "transition-colors duration-150 motion-reduce:transition-none",
-                  "focus-visible:ring-ring/50 outline-none focus-visible:ring-2",
-                  "disabled:cursor-not-allowed disabled:opacity-60",
-                  visible ? "bg-primary" : "bg-surface-raised border-border border",
-                )}
-              >
-                <span
-                  aria-hidden
-                  className={cn(
-                    "absolute top-1 size-4 rounded-full transition-transform duration-150",
-                    "motion-reduce:transition-none",
-                    visible
-                      ? "bg-primary-foreground translate-x-6"
-                      : "bg-muted-foreground translate-x-1",
-                  )}
-                />
-              </button>
+                onCheckedChange={() => void toggle(user)}
+                aria-label={`Show ${user.name} on the wall board`}
+              />
             </li>
           );
         })}

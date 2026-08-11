@@ -5,6 +5,8 @@ import { DisplayRefresher } from "@/features/analytics/components/DisplayRefresh
 import { DisplayRotator } from "@/features/analytics/components/DisplayRotator";
 import { verifyDisplayToken } from "@/features/analytics/displayAuth";
 import { getDisplayMetrics } from "@/features/analytics/displayQueries";
+import { clampRotationSeconds } from "@/features/admin/display/rotation";
+import { getRotationSeconds } from "@/features/admin/display/settings";
 import { PulseWallBoard } from "@/features/pulse/components/PulseWallBoard";
 import { loadOrgPulse } from "@/features/pulse/queries";
 import { AuthorizationError, requireAdmin } from "@/lib/permissions";
@@ -37,10 +39,11 @@ export default async function DisplayPage({
 
   // Both panes are fetched server-side in one pass so rotating between them
   // costs nothing at runtime — no fetch, no spinner, no flash.
-  const [metrics, pulse] = await Promise.all([
+  const [metrics, pulse, configuredRotation] = await Promise.all([
     getDisplayMetrics(),
     // Respects the per-user toggle configured at /admin/display.
     loadOrgPulse({ includeHiddenFromWallBoard: false }),
+    getRotationSeconds(),
   ]);
 
   const allPanes = [
@@ -54,17 +57,17 @@ export default async function DisplayPage({
     ? allPanes.filter((p) => p.key === screen)
     : allPanes;
 
-  // ?interval=N overrides the rotation period. Clamped so a typo can't leave
-  // the wall stuck on one pane or strobing.
+  // ?interval=N overrides the admin-configured period for this screen only —
+  // handy for a second display that should cycle at a different pace. Clamped
+  // so a typo can't leave the wall strobing or frozen.
   //
-  // Default 60s: long enough to actually read a board across a room before it
-  // moves on. Coinciding with the 60s data refresh is harmless — router.refresh()
-  // patches the tree in place rather than remounting, so a refresh landing
+  // Coinciding with the 60s data refresh is harmless: router.refresh() patches
+  // the tree in place rather than remounting, so a refresh landing
   // mid-rotation causes no visible disruption.
   const parsed = Number(interval);
-  const rotationSeconds = Number.isFinite(parsed)
-    ? Math.min(Math.max(parsed, 5), 300)
-    : 60;
+  const rotationSeconds = interval && Number.isFinite(parsed)
+    ? clampRotationSeconds(parsed)
+    : configuredRotation;
 
   return (
     <>

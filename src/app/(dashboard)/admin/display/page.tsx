@@ -1,10 +1,14 @@
-import { getWallBoardUsers } from "@/features/admin/display/queries";
+import { RotationControl } from "@/features/admin/display/components/RotationControl";
 import { WallBoardUserList } from "@/features/admin/display/components/WallBoardUserList";
+import { getWallBoardUsers } from "@/features/admin/display/queries";
+import { getRotationSeconds } from "@/features/admin/display/settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminDisplayPage() {
-  const users = await getWallBoardUsers(); // requireAdmin() inside
+  // getWallBoardUsers runs requireAdmin(); the settings read is gated by it.
+  const users = await getWallBoardUsers();
+  const rotationSeconds = await getRotationSeconds();
 
   return (
     <div className="flex flex-col gap-6">
@@ -14,6 +18,8 @@ export default async function AdminDisplayPage() {
         someone only affects that screen — it changes nothing about their access,
         role or tasks.
       </p>
+
+      <RotationControl seconds={rotationSeconds} />
 
       <WallBoardUserList users={users} />
     </div>

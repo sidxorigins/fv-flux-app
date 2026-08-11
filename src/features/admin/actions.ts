@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache";
 
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { ROTATION_KEY } from "./display/rotation";
 import { recomputeForTeam, recomputeMembership } from "@/lib/access-sync";
 import {
   AuthorizationError,
@@ -55,6 +56,7 @@ import {
   updateMembershipSchema,
   updateTeamSchema,
   setWallBoardVisibilitySchema,
+  setWallBoardRotationSchema,
 } from "./schemas";
 
 export type ActionResult<T = undefined> =
@@ -1616,6 +1618,40 @@ export async function setWallBoardVisibility(input: unknown): Promise<ActionResu
           targetType: "USER",
           targetId: userId,
           metadata: { name: target.name, showOnWallBoard: visible },
+        },
+      });
+    });
+
+    revalidatePath("/admin/display");
+    revalidatePath("/display");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: friendlyAuthError(err) };
+  }
+}
+
+/** How long each pane holds on the office wall board. Admin-only, audited. */
+export async function setWallBoardRotation(input: unknown): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+
+    const parsed = setWallBoardRotationSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, error: "Invalid input." };
+    const { seconds } = parsed.data;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.appSetting.upsert({
+        where: { key: ROTATION_KEY },
+        create: { key: ROTATION_KEY, value: String(seconds) },
+        update: { value: String(seconds) },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: "WALL_BOARD_ROTATION",
+          targetType: "SETTING",
+          targetId: ROTATION_KEY,
+          metadata: { seconds },
         },
       });
     });

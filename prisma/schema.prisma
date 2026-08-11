@@ -615,3 +615,16 @@ model DisplayToken {
 
   @@index([createdById])
 }
+
+/**
+ * Small key/value store for operational settings that shouldn't need a deploy
+ * to change — currently just the wall-board rotation period.
+ * Deliberately generic and deliberately tiny: a settings TABLE per feature
+ * would be heavier than the problem, and hardcoding these values is what sent
+ * the wall-board visibility rules through a redeploy in the first place.
+ */
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

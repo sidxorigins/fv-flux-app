@@ -202,3 +202,10 @@ export const setWallBoardVisibilitySchema = z.object({
   userId: z.string().min(1),
   visible: z.boolean(),
 });
+
+/** Seconds each pane holds on the office wall board. Bounds match
+ * features/admin/display/settings.ts — below ~5s it strobes, above ~5min it
+ * reads as frozen. */
+export const setWallBoardRotationSchema = z.object({
+  seconds: z.number().int().min(5).max(300),
+});
