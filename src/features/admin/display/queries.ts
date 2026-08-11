@@ -21,7 +21,10 @@ export async function getWallBoardUsers(): Promise<WallBoardUser[]> {
   const [users, openCounts] = await Promise.all([
     prisma.user.findMany({
       where: { status: "ACTIVE" },
-      orderBy: [{ showOnWallBoard: "desc" }, { name: "asc" }],
+      // Name only — NOT visibility. Sorting by showOnWallBoard made a row jump
+      // position the instant it was toggled, so on a long list the next click
+      // landed on a different person than the one aimed at.
+      orderBy: { name: "asc" },
       select: {
         id: true,
         name: true,

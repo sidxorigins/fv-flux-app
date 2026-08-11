@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -14,27 +14,57 @@ import { cn } from "@/lib/utils";
 
 export function WallBoardUserList({ users }: { users: WallBoardUser[] }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  // Optimistic overrides, keyed by user id. Absent = use the server value.
-  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  // Optimistic overrides, keyed by user id.
+  //
+  // Each records the server value it replaced (`from`). Once the server moves
+  // past that value the override is stale and ignored, so it expires on its own
+  // as the refresh lands — no effect, no cascading renders, and a change made
+  // elsewhere can never be masked by a leftover optimistic value.
+  const [overrides, setOverrides] = useState<
+    Record<string, { value: boolean; from: boolean }>
+  >({});
+  // Which rows have a request in flight. Per-row, NOT a shared useTransition:
+  // one pending toggle must not disable every other switch on the page.
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
 
-  const visibleOf = (u: WallBoardUser) => overrides[u.id] ?? u.showOnWallBoard;
+  const visibleOf = (u: WallBoardUser) => {
+    const override = overrides[u.id];
+    if (!override || override.from !== u.showOnWallBoard) return u.showOnWallBoard;
+    return override.value;
+  };
   const shownCount = users.filter(visibleOf).length;
 
-  function toggle(user: WallBoardUser) {
-    const next = !visibleOf(user);
-    setOverrides((o) => ({ ...o, [user.id]: next }));
+  async function toggle(user: WallBoardUser) {
+    if (busy[user.id]) return;
 
-    startTransition(async () => {
+    const current = visibleOf(user);
+    const next = !current;
+    setOverrides((o) => ({
+      ...o,
+      [user.id]: { value: next, from: user.showOnWallBoard },
+    }));
+    setBusy((b) => ({ ...b, [user.id]: true }));
+
+    try {
       const result = await setWallBoardVisibility({ userId: user.id, visible: next });
       if (!result.ok) {
-        // Roll back this row only — other pending toggles stay as they are.
-        setOverrides((o) => ({ ...o, [user.id]: !next }));
+        // Roll back this row only — other in-flight toggles are unaffected.
+        setOverrides((o) => {
+          const rolled = { ...o };
+          delete rolled[user.id];
+          return rolled;
+        });
         toast.error(result.error ?? "Couldn't update the wall board.");
         return;
       }
       router.refresh();
-    });
+    } finally {
+      setBusy((b) => {
+        const nextBusy = { ...b };
+        delete nextBusy[user.id];
+        return nextBusy;
+      });
+    }
   }
 
   return (
@@ -74,8 +104,8 @@ export function WallBoardUserList({ users }: { users: WallBoardUser[] }) {
                 role="switch"
                 aria-checked={visible}
                 aria-label={`Show ${user.name} on the wall board`}
-                disabled={pending}
-                onClick={() => toggle(user)}
+                disabled={busy[user.id] ?? false}
+                onClick={() => void toggle(user)}
                 className={cn(
                   "relative h-6 w-11 shrink-0 cursor-pointer rounded-full",
                   "transition-colors duration-150 motion-reduce:transition-none",
