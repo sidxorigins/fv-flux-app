@@ -38,6 +38,7 @@ rsync -az --delete \
   --exclude playwright-report \
   --exclude .prisma \
   --exclude db-backups \
+  --exclude foodverse-app-downloads-reports \
   --exclude "*.tsbuildinfo" \
   "$(dirname "$0")/" \
   "$HOST:$REMOTE_DIR/"
