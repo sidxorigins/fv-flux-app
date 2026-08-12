@@ -2,7 +2,7 @@ import Image from "next/image";
 import { Activity, Clock, Download, Radio, Smartphone, Users } from "lucide-react";
 
 import { DisplayTrendChart } from "./DisplayTrendChart";
-import { formatCount, formatDuration } from "@/features/analytics/metrics";
+import { formatCount, formatDuration, formatExact } from "@/features/analytics/metrics";
 import type { DisplayMetrics } from "@/features/analytics/displayQueries";
 import { cn } from "@/lib/utils";
 
@@ -111,13 +111,15 @@ export function DisplayBoard({ data }: { data: DisplayMetrics }) {
                 : "Total app downloads"
               : "Total app users"
           }
-          value={formatCount(data.downloads.total)}
+          // EXACT, not abbreviated: this is the number people watch move day
+          // to day, and formatCount would render 7,543 and 7,557 identically.
+          value={formatExact(data.downloads.total)}
           split={[
             data.downloads.iosAvailable
-              ? `iOS ${formatCount(data.downloads.ios)}`
+              ? `iOS ${formatExact(data.downloads.ios)}`
               : "iOS pending",
             data.downloads.androidAvailable
-              ? `Android ${formatCount(data.downloads.android)}`
+              ? `Android ${formatExact(data.downloads.android)}`
               : "Android pending",
             data.downloads.coverage ? `since ${data.downloads.coverage.from}` : null,
           ]

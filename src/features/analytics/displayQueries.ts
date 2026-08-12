@@ -94,6 +94,16 @@ type Row = {
 
 const APP = ["ios", "android"] as const;
 
+/** Metrics that describe a whole window rather than a single day. Stored once
+ * per sync at the window's start, so they must not be filtered by the rolling
+ * day cutoff. */
+const WINDOW_METRICS = [
+  METRIC.engagementTime180d,
+  METRIC.activeUsers180d,
+  METRIC.totalUsersAllTime,
+  METRIC.firstOpensAllTime,
+] as const;
+
 function latest(rows: Row[], scope: string, metric: string, day: string | null): number {
   if (!day) return 0;
   return (
@@ -125,38 +135,80 @@ export async function getDisplayMetrics(): Promise<DisplayMetrics> {
   const todayUtc = new Date();
   todayUtc.setUTCHours(0, 0, 0, 0);
 
-  const [rows, realtimeRows, storeRows, lastSynced] = await Promise.all([
-    prisma.metricSnapshot.findMany({
-      where: { source: SOURCE, grain: "DAY", periodStart: { gte: since } },
-      select: {
-        scope: true,
-        metric: true,
-        value: true,
-        periodStart: true,
-        dimension: true,
-        dimensionValue: true,
-      },
-    }),
-    prisma.metricSnapshot.findMany({
-      where: { source: SOURCE, grain: "INSTANT" },
-      orderBy: { periodStart: "desc" },
-      take: 10,
-      select: { scope: true, value: true, periodStart: true },
-    }),
-    prisma.metricSnapshot.findMany({
-      where: {
-        source: { in: ["play", "appstore"] },
-        metric: { in: [METRIC.storeInstalls, METRIC.storeInstallsLifetime] },
-        grain: "DAY",
-      },
-      select: { source: true, metric: true, value: true, periodStart: true },
-    }),
-    prisma.metricSnapshot.findFirst({
-      where: { source: SOURCE },
-      orderBy: { capturedAt: "desc" },
-      select: { capturedAt: true },
-    }),
-  ]);
+  const snapshotSelect = {
+    scope: true,
+    metric: true,
+    value: true,
+    periodStart: true,
+    dimension: true,
+    dimensionValue: true,
+  } as const;
+
+  const [perDayRows, contextRows, realtimeRows, storeRows, lastSynced] =
+    await Promise.all([
+      // Per-day series. These genuinely describe a day, so the 28-day window
+      // is the right filter.
+      prisma.metricSnapshot.findMany({
+        where: {
+          source: SOURCE,
+          grain: "DAY",
+          dimension: "",
+          periodStart: { gte: since },
+        },
+        select: snapshotSelect,
+      }),
+      // Breakdowns and window aggregates describe a PERIOD, and are stamped at
+      // the window's start — i.e. ~28 days ago. Filtering them by the same
+      // rolling cutoff drops them the moment the clock passes the last sync,
+      // silently emptying the country, engagement and lifetime cards. Fetched
+      // without a date bound and reduced to the newest set below.
+      prisma.metricSnapshot.findMany({
+        where: {
+          source: SOURCE,
+          grain: "DAY",
+          OR: [{ dimension: { not: "" } }, { metric: { in: [...WINDOW_METRICS] } }],
+        },
+        orderBy: { periodStart: "desc" },
+        select: snapshotSelect,
+      }),
+      prisma.metricSnapshot.findMany({
+        where: { source: SOURCE, grain: "INSTANT" },
+        orderBy: { periodStart: "desc" },
+        take: 10,
+        select: { scope: true, value: true, periodStart: true },
+      }),
+      prisma.metricSnapshot.findMany({
+        where: {
+          source: { in: ["play", "appstore"] },
+          metric: { in: [METRIC.storeInstalls, METRIC.storeInstallsLifetime] },
+          grain: "DAY",
+        },
+        select: { source: true, metric: true, value: true, periodStart: true },
+      }),
+      prisma.metricSnapshot.findFirst({
+        where: { source: SOURCE },
+        orderBy: { capturedAt: "desc" },
+        select: { capturedAt: true },
+      }),
+    ]);
+
+  // Keep only the most recent set PER DIMENSION. Grouping matters: these row
+  // types are stamped differently — breakdowns at the window start (~28 days
+  // ago), first-opens at today — so a single "newest overall" cutoff keeps one
+  // and silently discards the other. Old windows also linger, because the sync
+  // only deletes forward from its own windowStart.
+  const newestPerDimension = new Map<string, string>();
+  for (const row of contextRows) {
+    const iso = row.periodStart.toISOString();
+    const seen = newestPerDimension.get(row.dimension);
+    if (!seen || iso > seen) newestPerDimension.set(row.dimension, iso);
+  }
+  const rows = [
+    ...perDayRows,
+    ...contextRows.filter(
+      (r) => r.periodStart.toISOString() === newestPerDimension.get(r.dimension),
+    ),
+  ];
 
   // Per-day scalar rows only — window aggregates and breakdowns share the DAY
   // grain but describe a period, so they must not define the day axis.

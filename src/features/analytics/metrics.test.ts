@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   DAILY_ACTIVES_MAP,
   formatCount,
+  formatExact,
   formatDuration,
   ga4DateToUtc,
   deltaPct,
@@ -189,5 +190,22 @@ describe("parseDailyReport", () => {
         DAILY_ACTIVES_MAP,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("formatExact", () => {
+  it("groups thousands so a daily change stays visible", () => {
+    expect(formatExact(7543)).toBe("7,543");
+    // formatCount would render both of these as "7.5k".
+    expect(formatExact(7557)).not.toBe(formatExact(7543));
+  });
+
+  it("leaves small numbers plain", () => {
+    expect(formatExact(0)).toBe("0");
+    expect(formatExact(842)).toBe("842");
+  });
+
+  it("rounds fractional input", () => {
+    expect(formatExact(1234.6)).toBe("1,235");
   });
 });

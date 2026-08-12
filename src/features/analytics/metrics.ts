@@ -190,6 +190,17 @@ export function formatDuration(seconds: number): string {
   return `${m}m ${String(s).padStart(2, "0")}s`;
 }
 
+/**
+ * Exact count with thousand separators: 7543 → "7,543".
+ *
+ * Used where a day-to-day change has to be visible. `formatCount` would render
+ * both 7,543 and 7,557 as "7.5k", hiding exactly the movement someone is
+ * watching the board for.
+ */
+export function formatExact(n: number): string {
+  return Math.round(n).toLocaleString("en-GB");
+}
+
 /** Compact display for large counts on a wall display: 27768 → "27.8k". */
 export function formatCount(n: number): string {
   if (n < 1000) return String(Math.round(n));

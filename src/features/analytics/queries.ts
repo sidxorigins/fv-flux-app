@@ -258,18 +258,34 @@ export async function getAnalyticsOverview(): Promise<AnalyticsOverview> {
   since.setUTCDate(since.getUTCDate() - TREND_DAYS);
   since.setUTCHours(0, 0, 0, 0);
 
-  const [daily, realtime] = await Promise.all([
+  const snapshotSelect = {
+    scope: true,
+    metric: true,
+    value: true,
+    periodStart: true,
+    dimension: true,
+    dimensionValue: true,
+  } as const;
+
+  const [perDay, context, realtime] = await Promise.all([
     prisma.metricSnapshot.findMany({
-      where: { source: SOURCE, grain: "DAY", periodStart: { gte: since } },
-      orderBy: { periodStart: "asc" },
-      select: {
-        scope: true,
-        metric: true,
-        value: true,
-        periodStart: true,
-        dimension: true,
-        dimensionValue: true,
+      where: {
+        source: SOURCE,
+        grain: "DAY",
+        dimension: "",
+        periodStart: { gte: since },
       },
+      orderBy: { periodStart: "asc" },
+      select: snapshotSelect,
+    }),
+    // Breakdowns describe the whole window and are stamped at its start, so the
+    // rolling day cutoff would drop them as soon as the clock passes the last
+    // sync — silently emptying the country/channel/device cards. Fetched
+    // unbounded and reduced to the newest window below.
+    prisma.metricSnapshot.findMany({
+      where: { source: SOURCE, grain: "DAY", dimension: { not: "" } },
+      orderBy: { periodStart: "desc" },
+      select: snapshotSelect,
     }),
     // Newest INSTANT batch only. Ordered desc and grouped in memory — cheaper
     // than a correlated subquery for what is at most a handful of rows.
@@ -282,6 +298,23 @@ export async function getAnalyticsOverview(): Promise<AnalyticsOverview> {
   ]);
 
   const appInstalls = await resolveAppInstalls();
+
+  // Newest set PER DIMENSION. Breakdowns are stamped at the window start while
+  // first-opens are stamped today, so a single "newest overall" cutoff would
+  // keep one and drop the other. Old windows also linger, because the sync only
+  // deletes forward from its own windowStart.
+  const newestPerDimension = new Map<string, string>();
+  for (const row of context) {
+    const iso = row.periodStart.toISOString();
+    const seen = newestPerDimension.get(row.dimension);
+    if (!seen || iso > seen) newestPerDimension.set(row.dimension, iso);
+  }
+  const daily = [
+    ...perDay,
+    ...context.filter(
+      (r) => r.periodStart.toISOString() === newestPerDimension.get(r.dimension),
+    ),
+  ];
 
   const lastSynced = await prisma.metricSnapshot.findFirst({
     where: { source: SOURCE },
