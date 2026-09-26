@@ -49,12 +49,13 @@ export function DayTabs({
               </span>
             ) : null}
             {isToday ? (
-              <span aria-label="Today" className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" />
+              <span aria-label="Today" className="absolute top-1.5 left-1.5 size-1.5 rounded-full bg-primary" />
             ) : null}
+            {/* Top-RIGHT so the badge reads as this tab's, not the previous one's. */}
             {day.unassignedCount > 0 ? (
               <span
                 aria-label={`${day.unassignedCount} sessions without crew`}
-                className="absolute -top-1.5 -left-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-foreground tabular-nums"
+                className="absolute -top-1.5 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-foreground tabular-nums"
               >
                 {day.unassignedCount}
               </span>
