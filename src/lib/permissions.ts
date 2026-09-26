@@ -201,3 +201,32 @@ export async function isManagerOfAnyTeam(userId: string): Promise<boolean> {
 export function canManageProjectLeads(user: User): boolean {
   return user.globalRole === "ADMIN";
 }
+
+// Event schedules — company-wide run sheets (features/events).
+//
+// READ: every ACTIVE user (requireUser is enough — the schedule is meant to be
+// seen by the whole crew). WRITE: global Admin, or a user listed in
+// EventManager for that event. Creating/deleting events is Admin-only.
+
+/** True if `userId` may edit `eventId`'s schedule: Admin or an EventManager. */
+export async function canEditEvent(userId: string, eventId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { globalRole: true } });
+  if (user?.globalRole === "ADMIN") return true;
+  const row = await prisma.eventManager.findUnique({
+    where: { eventId_userId: { eventId, userId } },
+    select: { id: true },
+  });
+  return !!row;
+}
+
+/** Throws AuthorizationError unless the caller is Admin or an EventManager of `eventId`. */
+export async function requireEventEditor(eventId: string): Promise<User> {
+  const user = await requireUser();
+  if (user.globalRole === "ADMIN") return user;
+  const row = await prisma.eventManager.findUnique({
+    where: { eventId_userId: { eventId, userId: user.id } },
+    select: { id: true },
+  });
+  if (!row) throw new AuthorizationError("FORBIDDEN");
+  return user;
+}

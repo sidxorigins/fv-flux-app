@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2,
+  CalendarDays,
   Compass,
   FolderKanban,
   Inbox,
@@ -30,6 +31,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { href: "/projects", label: "Projects", icon: FolderKanban, tourId: "nav-projects" },
   { href: "/tasks", label: "My Tasks", icon: ListTodo, tourId: "nav-tasks" },
   { href: "/explore", label: "Explore", icon: Compass, tourId: "nav-explore" },
+  { href: "/events", label: "Events", icon: CalendarDays, tourId: "nav-events" },
 ];
 
 const EXECUTIVE_NAV_ITEM: NavItem = { href: "/executive", label: "Overview", icon: Building2, tourId: "nav-executive" };
