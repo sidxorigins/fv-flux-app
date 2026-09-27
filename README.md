@@ -97,7 +97,7 @@ Server env lives in `/var/www/flux/.env` on the box (EC2) and `prisma-cli projec
 src/
   app/            # routes: (auth) login/register, (dashboard) app shell, admin
   components/     # shadcn primitives + app shell (sidebar, topbar)
-  features/       # domain logic: auth, admin, projects, tasks, comments, attachments, users, dashboard
+  features/       # domain logic: auth, admin, projects, tasks, comments, attachments, users, dashboard, events
   lib/            # db, auth, permissions, r2, sanitize, rate-limit
   proxy.ts        # edge route protection (JWT-only; real authz re-checked server-side)
 prisma/           # schema, migrations, idempotent seed

@@ -55,6 +55,16 @@ enum TaskPriority {
   URGENT
 }
 
+/// Coverage priority for an event schedule session. Mirrors the camera-team
+/// run sheet vocabulary (MUST FILM / HIGH / OPTIONAL) rather than TaskPriority
+/// because a session is not a task: it is a fixed moment in a live programme
+/// that either gets covered or is missed.
+enum SessionPriority {
+  MUST_FILM
+  HIGH
+  OPTIONAL
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Core entities
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,6 +117,10 @@ model User {
   savedFilters        SavedFilter[]
   passwordResetTokens PasswordResetToken[]
   displayTokens       DisplayToken[]       @relation("DisplayTokenCreatedBy")
+  eventsCreated       Event[]              @relation("EventCreatedBy")
+  eventManagerOf      EventManager[]
+  sessionsOwned       EventSession[]       @relation("SessionOwner")
+  sessionAssignments  EventSessionAssignment[]
 }
 
 model Project {
@@ -627,4 +641,131 @@ model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event schedules (live-event run sheets)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// WHY THIS EXISTS: a multi-day live event (Expogast / Culinary World Cup) needs
+// a day-by-day run sheet — who is filming what, where, when, and how important
+// it is. Tasks are the wrong shape for this: a session is a fixed moment in
+// someone else's programme, sorted by clock time inside a day, with a crew of
+// several people each in a named role. Projects/boards stay untouched.
+//
+// Access model: every ACTIVE user can READ every event (it is a company-wide
+// schedule). WRITE (days, sessions, crew) is granted to global Admins and to
+// users listed in EventManager for that event — see requireEventEditor in
+// lib/permissions.ts. Creating/deleting events themselves is Admin-only.
+
+model Event {
+  id          String   @id @default(cuid())
+  /// URL handle, e.g. "expogast-2026". Lowercase, [a-z0-9-], unique.
+  slug        String   @unique
+  name        String
+  /// Optional strapline, e.g. "RAK Porcelain Culinary World Cup 2026".
+  subtitle    String?
+  venue       String?
+  /// Calendar dates only (no time). @db.Date so a day never shifts across
+  /// timezones between Dubai and Luxembourg.
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  /// IANA zone the event runs in, e.g. "Europe/Luxembourg". Used to decide
+  /// which day is "today" when the schedule opens.
+  timezone    String   @default("UTC")
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User           @relation("EventCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  managers  EventManager[]
+  days      EventDay[]
+  sessions  EventSession[]
+
+  @@index([startDate])
+}
+
+/// Users allowed to edit an event's schedule without being global Admin.
+model EventManager {
+  id        String   @id @default(cuid())
+  eventId   String
+  userId    String
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([userId])
+}
+
+/// One calendar day of an event. Holds the day's headline ("Opening Ceremony",
+/// "Standard Competition Day") and free-text notes ("After Party 21:00–01:00").
+model EventDay {
+  id        String   @id @default(cuid())
+  eventId   String
+  date      DateTime @db.Date
+  title     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event    Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  sessions EventSession[]
+
+  @@unique([eventId, date])
+}
+
+/// A single row on the run sheet: a slot in the programme the crew must cover.
+model EventSession {
+  id       String  @id @default(cuid())
+  eventId  String
+  dayId    String
+  title    String
+  /// Hall / room / stage, free text ("Hall 3", "Location TBC").
+  location String?
+  /// What the camera should capture — plain text, shown under the title.
+  focus    String?
+  /// "HH:MM" 24h, or null when the slot has no fixed time.
+  startTime String?
+  endTime   String?
+  /// Human label shown when there is no fixed time: "Morning", "Afternoon",
+  /// "After ceremony", "Time TBC".
+  timeLabel String?
+  priority  SessionPriority @default(HIGH)
+  /// Fractional index for ordering within a day. Timed sessions get their
+  /// start minute (10:30 → 630) so clock order falls out for free; untimed
+  /// ones are placed explicitly and can be nudged up/down.
+  position  Float
+  /// The one person accountable for this slot being covered.
+  ownerId   String?
+  /// Set when the crew marks the slot as covered on the day.
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event       Event                    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  day         EventDay                 @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  owner       User?                    @relation("SessionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  assignments EventSessionAssignment[]
+
+  @@index([dayId, position])
+  @@index([eventId])
+  @@index([ownerId])
+}
+
+/// A crew member on a session, with their job for that slot ("Camera A",
+/// "Drone", "Interviews", "Photos"). The owner may also appear here.
+model EventSessionAssignment {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String
+  role      String?
+  createdAt DateTime @default(now())
+
+  session EventSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([userId])
 }
