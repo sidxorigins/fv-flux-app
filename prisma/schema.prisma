@@ -57,7 +57,7 @@ enum TaskPriority {
 
 /// Coverage priority for an event schedule session. Mirrors the camera-team
 /// run sheet vocabulary (MUST FILM / HIGH / OPTIONAL) rather than TaskPriority
-/// because a session is not a task: it is a fixed moment in a live programme
+/// because a session is not a task: it is a fixed moment in a live program
 /// that either gets covered or is missed.
 enum SessionPriority {
   MUST_FILM
@@ -650,7 +650,7 @@ model AppSetting {
 // WHY THIS EXISTS: a multi-day live event (Expogast / Culinary World Cup) needs
 // a day-by-day run sheet — who is filming what, where, when, and how important
 // it is. Tasks are the wrong shape for this: a session is a fixed moment in
-// someone else's programme, sorted by clock time inside a day, with a crew of
+// someone else's program, sorted by clock time inside a day, with a crew of
 // several people each in a named role. Projects/boards stay untouched.
 //
 // Access model: every ACTIVE user can READ every event (it is a company-wide
@@ -716,7 +716,7 @@ model EventDay {
   @@unique([eventId, date])
 }
 
-/// A single row on the run sheet: a slot in the programme the crew must cover.
+/// A single row on the run sheet: a slot in the program the crew must cover.
 model EventSession {
   id       String  @id @default(cuid())
   eventId  String

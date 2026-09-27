@@ -38,13 +38,13 @@ export function DayTabs({
               "transition-colors duration-150 motion-reduce:transition-none outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
               active
                 ? "border-primary/50 bg-primary/10 text-foreground"
-                : "border-border/70 bg-surface/60 text-muted-foreground hover:bg-surface-raised hover:text-foreground",
+                : "border-border/70 bg-surface/60 text-foreground hover:bg-surface-raised",
             )}
           >
             <span className="text-[11px] font-medium tracking-wider uppercase">{weekday}</span>
             <span className="text-xl leading-none font-semibold tabular-nums">{num}</span>
             {day.title ? (
-              <span className="mt-0.5 max-w-[7rem] truncate text-[10px] leading-tight text-muted-foreground">
+              <span className="mt-0.5 max-w-[7rem] truncate text-[10px] leading-tight text-foreground">
                 {day.title}
               </span>
             ) : null}

@@ -151,7 +151,7 @@ export function DayHeaderEditor({
 
       {canDelete ? (
         <>
-          <Button variant="ghost" size="icon-sm" aria-label="Delete day" className="text-muted-foreground hover:text-danger" onClick={() => setConfirmDelete(true)}>
+          <Button variant="ghost" size="icon-sm" aria-label="Delete day" className="text-foreground hover:text-danger" onClick={() => setConfirmDelete(true)}>
             <Trash2 />
           </Button>
           <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>

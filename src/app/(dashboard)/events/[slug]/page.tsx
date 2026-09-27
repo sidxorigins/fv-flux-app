@@ -16,10 +16,10 @@ import { DashboardEntrance } from "@/features/dashboard/components/DashboardEntr
 function Kpi({ label, value, icon: Icon, tone }: { label: string; value: number; icon: typeof Users; tone?: string }) {
   return (
     <div className="glass flex items-center gap-3 px-4 py-3">
-      <Icon aria-hidden className={cn("size-4 shrink-0", tone ?? "text-muted-foreground")} />
+      <Icon aria-hidden className={cn("size-4 shrink-0", tone ?? "text-foreground")} />
       <div className="flex flex-col">
         <span className="text-xl leading-none font-semibold text-foreground tabular-nums">{value}</span>
-        <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">{label}</span>
+        <span className="text-[11px] font-medium tracking-wider text-foreground uppercase">{label}</span>
       </div>
     </div>
   );
@@ -59,14 +59,14 @@ export default async function EventSchedulePage({
       <div className="flex flex-col gap-6">
         {/* Header */}
         <div className="flex flex-col gap-4">
-          <Link href="/events" className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          <Link href="/events" className="inline-flex w-fit items-center gap-1 text-xs text-foreground hover:text-primary">
             <ArrowLeft aria-hidden className="size-3.5" /> All events
           </Link>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex min-w-0 flex-col gap-1.5">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{event.name}</h1>
-              {event.subtitle ? <p className="text-sm text-muted-foreground">{event.subtitle}</p> : null}
-              <dl className="flex flex-wrap gap-x-5 gap-y-1 pt-1 text-sm text-muted-foreground">
+              {event.subtitle ? <p className="text-sm text-foreground">{event.subtitle}</p> : null}
+              <dl className="flex flex-wrap gap-x-5 gap-y-1 pt-1 text-sm text-foreground">
                 <div className="inline-flex items-center gap-1.5">
                   <CalendarDays aria-hidden className="size-4" />
                   <dd>{formatDateRange(event.startDate, event.endDate)}</dd>
@@ -86,7 +86,7 @@ export default async function EventSchedulePage({
             <div className="flex items-center gap-3">
               {event.managers.length > 0 ? (
                 <div className="flex items-center gap-1.5" aria-label="Schedule managers">
-                  <ShieldCheck aria-hidden className="size-4 text-muted-foreground" />
+                  <ShieldCheck aria-hidden className="size-4 text-foreground" />
                   <div className="flex -space-x-1.5">
                     {event.managers.map((m) => (
                       <CrewAvatar key={m.id} user={m} />
@@ -114,7 +114,7 @@ export default async function EventSchedulePage({
                     ) : null}
                   </div>
                   {activeDay.title ? <p className="text-sm font-medium text-foreground/80">{activeDay.title}</p> : null}
-                  {activeDay.notes ? <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">{activeDay.notes}</p> : null}
+                  {activeDay.notes ? <p className="max-w-3xl text-sm leading-relaxed text-foreground">{activeDay.notes}</p> : null}
                 </div>
                 {event.canEdit ? (
                   <DayHeaderEditor
@@ -147,10 +147,10 @@ export default async function EventSchedulePage({
             <aside className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start">
               <CrewLoadPanel crewLoad={schedule?.crewLoad ?? []} total={sessions.length} />
               <div className="glass flex flex-col gap-1 p-4">
-                <span className="text-xs font-medium tracking-wider text-muted-foreground uppercase">Progress</span>
+                <span className="text-xs font-medium tracking-wider text-foreground uppercase">Progress</span>
                 <span className="text-2xl font-semibold text-foreground tabular-nums">
                   {covered.length}
-                  <span className="text-base font-normal text-muted-foreground"> / {sessions.length} covered</span>
+                  <span className="text-base font-normal text-foreground"> / {sessions.length} covered</span>
                 </span>
                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-raised" aria-hidden>
                   <div className="h-full rounded-full bg-success" style={{ width: `${sessions.length ? Math.round((covered.length / sessions.length) * 100) : 0}%` }} />
@@ -161,7 +161,7 @@ export default async function EventSchedulePage({
         ) : (
           <div className="glass mx-auto mt-6 flex w-full max-w-md flex-col items-center gap-2 px-8 py-12 text-center">
             <p className="text-base font-medium text-foreground">This event has no days</p>
-            <p className="text-sm text-muted-foreground">Add a day from the settings to start the run sheet.</p>
+            <p className="text-sm text-foreground">Add a day from the settings to start the run sheet.</p>
           </div>
         )}
       </div>

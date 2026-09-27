@@ -11,7 +11,7 @@ import { DashboardEntrance } from "@/features/dashboard/components/DashboardEntr
 const STATUS_META: Record<EventListRow["status"], { label: string; className: string }> = {
   live: { label: "Live now", className: "bg-success/10 text-success" },
   upcoming: { label: "Upcoming", className: "bg-info/10 text-info" },
-  past: { label: "Past", className: "bg-muted-foreground/10 text-muted-foreground" },
+  past: { label: "Past", className: "bg-foreground/10 text-foreground" },
 };
 
 function EventTile({ event }: { event: EventListRow }) {
@@ -27,13 +27,13 @@ function EventTile({ event }: { event: EventListRow }) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">{event.name}</h2>
-          {event.subtitle ? <p className="truncate text-sm text-muted-foreground">{event.subtitle}</p> : null}
+          {event.subtitle ? <p className="truncate text-sm text-foreground">{event.subtitle}</p> : null}
         </div>
         <span className={cn("shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase", status.className)}>
           {status.label}
         </span>
       </div>
-      <dl className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
+      <dl className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-foreground">
         <div className="inline-flex items-center gap-1.5">
           <CalendarDays aria-hidden className="size-4" />
           <dd>{formatDateRange(event.startDate, event.endDate)}</dd>
@@ -51,7 +51,7 @@ function EventTile({ event }: { event: EventListRow }) {
           <Stat label="sessions" value={event.sessionCount} />
           <Stat label="yours" value={event.mySessionCount} highlight={event.mySessionCount > 0} />
         </div>
-        <ArrowRight aria-hidden className="size-4 text-muted-foreground transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
+        <ArrowRight aria-hidden className="size-4 text-foreground transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
       </div>
     </Link>
   );
@@ -61,7 +61,7 @@ function Stat({ label, value, highlight = false }: { label: string; value: numbe
   return (
     <div className="flex flex-col">
       <span className={cn("text-2xl leading-none font-semibold tabular-nums", highlight ? "text-primary" : "text-foreground")}>{value}</span>
-      <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">{label}</span>
+      <span className="text-[11px] font-medium tracking-wider text-foreground uppercase">{label}</span>
     </div>
   );
 }
@@ -78,16 +78,16 @@ export default async function EventsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">Events</h1>
-            <p className="text-sm text-muted-foreground">Day-by-day run sheets: who covers what, where, and when.</p>
+            <p className="text-sm text-foreground">Day-by-day run sheets: who covers what, where, and when.</p>
           </div>
           {isAdmin ? <CreateEventDialog hasExpogast={hasExpogast} /> : null}
         </div>
 
         {events.length === 0 ? (
           <div className="glass mx-auto mt-10 flex w-full max-w-md flex-col items-center gap-2 px-8 py-12 text-center">
-            <CalendarDays aria-hidden className="size-6 text-muted-foreground" />
+            <CalendarDays aria-hidden className="size-6 text-foreground" />
             <p className="text-base font-medium text-foreground">No events yet</p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-foreground">
               {isAdmin ? "Import the Expogast 2026 run sheet or create a blank event." : "An admin will add the first event schedule."}
             </p>
           </div>

@@ -135,7 +135,7 @@ export function EventSettingsDialog({ event, candidates }: { event: EventDetail;
                   <FieldContent>
                     <div className="flex flex-col gap-2 rounded-lg border border-border p-2">
                       {event.managers.length === 0 ? (
-                        <p className="px-1 text-xs text-muted-foreground">Only admins can edit this schedule.</p>
+                        <p className="px-1 text-xs text-foreground">Only admins can edit this schedule.</p>
                       ) : (
                         <ul className="flex flex-col gap-1.5">
                           {event.managers.map((m) => (

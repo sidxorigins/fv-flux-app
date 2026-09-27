@@ -29,7 +29,7 @@ function Chip({ active, onClick, children, className }: { active: boolean; onCli
       className={cn(
         "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium",
         "transition-colors duration-150 motion-reduce:transition-none outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        active ? "border-primary/50 bg-primary/10 text-foreground" : "border-border bg-transparent text-muted-foreground hover:bg-surface-raised hover:text-foreground",
+        active ? "border-primary/50 bg-primary/10 text-foreground" : "border-border bg-transparent text-foreground hover:bg-surface-raised",
         className,
       )}
     >
@@ -120,7 +120,7 @@ export function DaySchedule({ dayId, sessions, canEdit, currentUserId, candidate
           </>
         ) : null}
         <span className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="text-xs text-foreground tabular-nums">
             {filtered ? `${visible.length} of ${sessions.length}` : `${sessions.length}`} sessions
           </span>
           {canEdit ? (
@@ -134,7 +134,7 @@ export function DaySchedule({ dayId, sessions, canEdit, currentUserId, candidate
 
       {visible.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-6 py-12 text-center">
-          <CalendarX2 aria-hidden className="size-6 text-muted-foreground" />
+          <CalendarX2 aria-hidden className="size-6 text-foreground" />
           <p className="text-sm font-medium text-foreground">
             {sessions.length === 0 ? "Nothing scheduled on this day yet" : "No sessions match these filters"}
           </p>

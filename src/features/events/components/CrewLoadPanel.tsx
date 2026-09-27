@@ -12,13 +12,13 @@ export function CrewLoadPanel({ crewLoad, total }: { crewLoad: DaySchedule["crew
   return (
     <section aria-labelledby="crew-load-heading" className="glass flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
-        <h2 id="crew-load-heading" className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
+        <h2 id="crew-load-heading" className="text-xs font-medium tracking-wider text-foreground uppercase">
           Crew today
         </h2>
-        <Users aria-hidden className="size-4 text-muted-foreground" />
+        <Users aria-hidden className="size-4 text-foreground" />
       </div>
       {crewLoad.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nobody is assigned yet.</p>
+        <p className="text-sm text-foreground">Nobody is assigned yet.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {crewLoad.map(({ user, sessions, mustFilm }) => {
@@ -29,7 +29,7 @@ export function CrewLoadPanel({ crewLoad, total }: { crewLoad: DaySchedule["crew
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="truncate text-sm font-medium text-foreground">{user.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    <span className="shrink-0 text-xs text-foreground tabular-nums">
                       {sessions} {sessions === 1 ? "session" : "sessions"}
                       {mustFilm > 0 ? <span className="text-danger"> · {mustFilm} must</span> : null}
                     </span>

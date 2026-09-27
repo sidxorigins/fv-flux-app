@@ -76,11 +76,11 @@ export function SessionCard({ session, canEdit, isMine, onEdit }: SessionCardPro
 
       {/* Time column */}
       <div className="flex w-[4.5rem] shrink-0 flex-col pt-0.5 sm:w-24">
-        <span className={cn("text-sm font-semibold tabular-nums", session.startTime ? "text-foreground" : "text-muted-foreground")}>
+        <span className={cn("text-sm font-semibold tabular-nums", session.startTime ? "text-foreground" : "text-foreground")}>
           {time}
         </span>
         {session.location ? (
-          <span className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <span className="mt-1 inline-flex items-center gap-1 text-xs text-foreground">
             <MapPin aria-hidden className="size-3 shrink-0" />
             <span className="truncate">{session.location}</span>
           </span>
@@ -98,14 +98,14 @@ export function SessionCard({ session, canEdit, isMine, onEdit }: SessionCardPro
             </span>
           ) : null}
         </div>
-        {session.focus ? <p className="text-sm leading-relaxed text-muted-foreground">{session.focus}</p> : null}
+        {session.focus ? <p className="text-sm leading-relaxed text-foreground">{session.focus}</p> : null}
 
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           {session.owner ? (
             <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
               <CrewAvatar user={session.owner} owner />
               <span className="font-medium">{session.owner.name}</span>
-              <span className="text-muted-foreground">owner</span>
+              <span className="text-foreground">owner</span>
             </span>
           ) : (
             <span className="text-xs text-danger">No owner</span>
@@ -116,7 +116,7 @@ export function SessionCard({ session, canEdit, isMine, onEdit }: SessionCardPro
                 <li key={c.user.id} className="inline-flex items-center gap-1 rounded-full bg-surface-raised py-0.5 pr-2 pl-0.5 text-xs">
                   <CrewAvatar user={c.user} role={c.role} />
                   <span className="text-foreground">{c.user.name.split(" ")[0]}</span>
-                  {c.role ? <span className="text-muted-foreground">· {c.role}</span> : null}
+                  {c.role ? <span className="text-foreground">· {c.role}</span> : null}
                 </li>
               ))}
             </ul>

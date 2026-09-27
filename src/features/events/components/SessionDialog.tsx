@@ -291,7 +291,7 @@ export function SessionDialog({ open, onOpenChange, dayId, session, candidates }
               <FieldContent>
                 <div className="flex flex-col gap-2 rounded-lg border border-border p-2">
                   {crew.length === 0 ? (
-                    <p className="px-1 py-1 text-xs text-muted-foreground">No crew yet. Add people and give each a job.</p>
+                    <p className="px-1 py-1 text-xs text-foreground">No crew yet. Add people and give each a job.</p>
                   ) : (
                     <ul className="flex flex-col gap-1.5">
                       {crew.map((c) => (

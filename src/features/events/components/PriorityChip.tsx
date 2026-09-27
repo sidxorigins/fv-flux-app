@@ -29,8 +29,8 @@ export const SESSION_PRIORITY_META: Record<
     label: "Optional",
     short: "OPT",
     icon: Minus,
-    chipClass: "bg-muted-foreground/10 text-muted-foreground",
-    barClass: "bg-muted-foreground/60",
+    chipClass: "bg-foreground/10 text-foreground",
+    barClass: "bg-foreground/50",
   },
 };
 

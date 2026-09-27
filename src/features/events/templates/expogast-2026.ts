@@ -79,7 +79,7 @@ const STANDARD_DAY: TemplateSession[] = [
     title: "Live Carving / Carving competitions",
     location: "Hall 2",
     focus: "Live action, technique, details, competitor concentration and finished pieces.",
-    timeLabel: "During programme",
+    timeLabel: "During program",
     anchor: 9 * 60,
     priority: "MUST_FILM",
   },
@@ -146,7 +146,7 @@ const STANDARD_DAY: TemplateSession[] = [
   {
     title: "Food Truck & Street Food Contest",
     location: "Hall 8",
-    focus: "Action cooking, service and judging according to the final daily programme.",
+    focus: "Action cooking, service and judging according to the final daily program.",
     timeLabel: "Afternoon",
     anchor: 13 * 60 + 1,
     priority: "HIGH",
@@ -154,7 +154,7 @@ const STANDARD_DAY: TemplateSession[] = [
   {
     title: "Regional Teams",
     location: "Hall 2",
-    focus: "Competition coverage according to the final allocation / programme.",
+    focus: "Competition coverage according to the final allocation / program.",
     timeLabel: "Afternoon",
     anchor: 13 * 60 + 2,
     priority: "HIGH",
